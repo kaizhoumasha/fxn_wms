@@ -1,0 +1,14 @@
+.codex/*
+.venv/*
+venv/
+__pycache__/
+*.pyc
+node_modules/
+dist/
+build/
+*.log
+.env
+.env.*
+.DS_Store
+Thumbs.db
+docs/architecture/fxn-sa/dist/
