@@ -385,7 +385,7 @@ sequenceDiagram
     Operator->>WMS: 扫描栈板号(PalletID)
     WMS->>WMS: 查询栈板关联的所有GRN
     WMS-->>Operator: 显示所有GRN的抽检明细
-    
+  
     loop 按GRN取样
         Operator->>Operator: 取出料盘/外箱
         Operator->>WMS: 扫描PKG六合一码
@@ -403,7 +403,7 @@ sequenceDiagram
 
     Note over Operator,AGV: Step 3: 结果路由 (混托+分托)
     WMS->>WMS: 查询该GRN关联的所有栈板
-    
+  
     alt 场景A: 混托栈板
         WMS->>WMS: 检查栈板的所有GRN结果
         alt 所有GRN均OK
@@ -427,12 +427,12 @@ sequenceDiagram
 
     opt 进入复判区
         Note over Operator,AGV: Step 4: 复判与分拣
-        
+    
         alt 情形A: 按GRN复判OK
             Operator->>QMS: 更新GRN_X复判为OK
             QMS->>WMS: 推送Review_Result(GRN_X, OK)
             WMS->>WMS: 查询包含GRN_X的所有栈板
-            
+        
             loop 遍历栈板
                 alt 纯单一GRN栈板
                     WMS->>RCS: 立即路由→Buffer_Area
@@ -445,13 +445,13 @@ sequenceDiagram
                     end
                 end
             end
-        
+    
         else 情形B/C: 拆板分拣
             Operator->>WMS: 扫描源栈板(SourcePalletID)
             WMS-->>Operator: 显示所有GRN及检验结果
             Operator->>Operator: 选择要拆分的NG GRN
             Operator->>WMS: 扫描新栈板(NewPalletID)
-            
+        
             loop 拆分NG物料
                 Operator->>WMS: 扫描物料箱条码
                 WMS->>WMS: 识别所属GRN_ID
@@ -462,40 +462,109 @@ sequenceDiagram
                     WMS-->>Operator: 保留在SourcePallet
                 end
             end
-            
+        
             Operator->>WMS: 提交拆板完成
             WMS->>WMS: 更新GRN关联关系
-            
+        
             alt SourcePallet剩余GRN均OK
                 WMS->>RCS: 路由→Buffer_Area
             else SourcePallet仍有NG GRN
                 WMS->>WMS: 保持在Review_Area
             end
-            
-            Note over Operator: NewPallet(全NG)<br/>入不良品仓
         
+            Note over Operator: NewPallet(全NG)<br/>入不良品仓
+    
         else 情形D: 部分收货
             Operator->>QMS: 标记GRN_Y为部分合格<br/>记录OK_List+NG_List
             QMS->>WMS: 推送Review_Result<br/>(GRN_Y, Partial, Lists)
-            
+        
             WMS->>WMS: 查询GRN_Y的所有栈板
             WMS->>WMS: 按OK_List分类栈板
-            
+        
             loop 处理OK栈板
                 WMS->>RCS: 路由→Buffer_Area
                 RCS->>AGV: 搬运
             end
-            
+        
             WMS->>WMS: 更新GRN状态<br/>Status=Partial_Received
             WMS->>WMS: 计算Accepted_Qty
             WMS->>WMS: 生成退货单给SAP
-            
+        
             Note over Operator: NG栈板→不良品仓<br/>或安排退货
         end
     end
 ```
 
+**IQC 通过后的路由规则 (Post-IQC Routing)**
+
+栈板到达 Buffer_Area 后，WMS 依据物料属性自动分配后续路径：
+
+| 物料类型               | 判断条件                                                | 目标区域                 | 后续流程 | 触发方式               |
+| ---------------------- | ------------------------------------------------------- | ------------------------ | -------- | ---------------------- |
+| **SMT 电子料**   | `Material_Type = Electronics``Size = 7"/13"/15" Reel` | 装箱区 (Kitting Area)    | 见 3.3.1 | 系统自动/人工呼叫      |
+| **高值物料**     | `Attribute = HighValue`                               | 高值区 (High Value Area) | 见 3.4.1 | 直发（已在收货时完成） |
+| **MSD 湿敏元件** | `Moisture_Sensitive = True`                           | 作业台 → 干燥柜         | 见 3.4.2 | 系统分配               |
+| **非规则物料**   | `Dimensions > Standard_Limit`                         | 作业台 → 异形货架       | 见 3.4.2 | 系统分配/人工选址      |
+| **机构件**       | `Material_Type = Mechanical`                          | 存储区 (Storage)         | 见 3.5.1 | 系统分配               |
+| **其他**         | 不符合上述条件                                          | 人工审核                 | 人工处理 | 人工介入               |
+
+**路由触发时机**：
+
+- **SMT 电子料**: IQC OK 后立即进入装箱队列，根据装箱区负载和优先级调度（详见 3.3.1 Step 1）
+- **特殊物料**: IQC OK 后由 WMS 生成入库任务，RCS 调度 AGV 执行搬运
+
 ### 3.3 内部物流与生产供料 (Internal Logistics & Production Supply)
+
+本章节定义 SMT 电子料从 IQC 检验通过后，到装箱、入库、存储，最终发料至产线的完整物流链路。
+
+**物料状态转换全局视图 (Material State Transitions)**
+
+```mermaid
+stateDiagram-v2
+    [*] --> IQC_OK: IQC检验通过
+  
+    IQC_OK --> Kitting_Queue: SMT电子料
+    IQC_OK --> Direct_Storage: 特殊物料(3.4/3.5)
+  
+    Kitting_Queue --> Kitting_InProgress: 装箱开始
+    Kitting_InProgress --> Kitting_Complete: 装箱完成
+    Kitting_Complete --> Inbound_Buffer: 切出至缓存区
+  
+    Inbound_Buffer --> Exchange_Mode: 满箱交换
+    Inbound_Buffer --> Pipeline_Mode: 零散入库
+    Inbound_Buffer --> Hybrid_Mode: 混合模式
+  
+    Exchange_Mode --> Available: 入库完成
+    Pipeline_Mode --> Available: 入库完成
+    Hybrid_Mode --> Available: 入库完成
+  
+    Available --> Issue_Queue: 工单下达
+    Issue_Queue --> Picking_InProgress: 拣选中
+    Picking_InProgress --> Issued: 配送至产线
+  
+    Issued --> Consumed: 产线消耗
+    Issued --> Return_Queue: 退料
+  
+    Return_Queue --> Return_Processing: 清点/测试
+    Return_Processing --> Available: 重新入库
+    Return_Processing --> Defective: 不合格品
+  
+    Consumed --> [*]
+    Defective --> [*]
+```
+
+**状态说明**：
+
+- **IQC_OK**: IQC 检验通过后的路由分发点（详见上方路由规则表）
+- **Available**: 库存可用状态，支持新入库物料和退料重新入库两种来源
+- **Direct_Storage**: 特殊物料（高值/MSD/Irregular/机构件）直接入库路径，见 3.4/3.5 章节
+
+**章节导航**:
+
+- **3.3.1**: SMT 电子料装箱 (`Kitting_Queue → Inbound_Buffer`)
+- **3.3.2**: SMT 电子料入库与存储 (`Inbound_Buffer → Available`)
+- **3.3.3**: SMT 生产发料 (`Available → Issued`)
+- **3.6**: 生产退料 (`Return_Queue → Available/Defective`)
 
 #### 3.3.1 SMT 电子料收货到装箱 (SMT Electronics Inbound to Kitting)
 
@@ -511,14 +580,29 @@ sequenceDiagram
 
   **Step 1: 任务初始化与空架补给 (Initialization & Supply)**
 
+  * **任务触发条件 (Trigger Conditions)**:
+    * **条件 A**: Buffer_Area 中 SMT 电子料栈板数量 >= 阈值（例如：3 个栈板）
+    * **条件 B**: 紧急工单需求（标记为 `Priority=High` 的 GRN）
+    * **条件 C**: 人工手动触发（仓库管理员在界面选择 GRN 发起装箱）
+  * **优先级规则 (Priority Rules)**:
+    1. **紧急工单** (Priority=High) → 置顶队列
+    2. **即将过期物料** (根据 DateCode 计算) → 高优先级
+    3. **常规物料** (FIFO, 按到达 Buffer 时间排序)
   * **WMS 监控**: 周期性扫描装箱区单层货架状态。
+  * **智能叫料逻辑 (Smart Rack Request)**:
+    * **分析来源**: WMS 预判即将到达装箱工位的栈板上的物料明细。
+    * **决策**:
+      * 若栈板包含直径 > 7寸 (180mm) 的料盘 → WMS 向 RCS 请求 **Type B (混合箱型)** 空单层货架。
+      * 若栈板仅含 7寸料盘 → WMS 请求 **Type A (纯7寸箱型)** 空单层货架 (优先) 或 Type B。
+    * **指令**: `Task=Supply_Empty_Rack, Type=Allocated_Type`.
+    * **约束**: 若栈板包含直径 > 7寸 的料盘，WMS 不得请求 Type A 货架；RCS 按 `Type` 字段提供对应物理货架，这是本期标准方案（对应审计报告中的“方案 A”）。
   * **系统握手**: AGV 到位 -> RCS 通知 WMS -> WMS 更新库存状态 `RackStatus=Ready`.
   * **Step 1.5 上料前校验 (Pre-Start Check)**:
     * **动作**: 机械臂扫描一层货架上的所有箱号/地码。
     * **校验**: 控制系统检查所有箱必须为 **空 (Empty)**。
     * **异常**: 若发现非空箱 -> 报警并在界面提示 -> 停止作业 (需人工介入)。
   * **叫料模式 (Calling Modes)**:
-    * **系统模式**: WMS 依据暂存区待装箱列表 (按时间顺序) 自动生成补给任务。
+    * **系统模式**: WMS 依据上述触发条件和优先级规则自动生成补给任务。
     * **人工模式**: 仓库人员在装箱区电脑手动选择 GRN 发起叫料。
   * **数据基础**: WMS 需预先维护供应商物料的 **厚度**、**尺寸** 等基础数据 (Master Data)。
 
@@ -526,15 +610,22 @@ sequenceDiagram
 
   * **人工动作**: 拆箱 -> 将料盘放置于 **串杆 (Spindles)** -> 按下"Ready"按钮。
   * **拆完处理**:
-    * **空栈板回收**: WMS 生成将空栈板运回 "空栈板存放区" 的任务。
-    * **未装完回库**: 若栈板未作业完需移除，WMS 生成运回 "收货暂存区" 的任务。
+    * **空栈板回收**: 仓库人员在 PDA 上请求WMS， 生成将空栈板运回 "空栈板存放区" 的任务。
+    * **未装完回库**: 若栈板未作业完需移除，仓库人员在 PDA 上请求WMS，生成运回 "收货暂存区" 的任务。
   * **机械臂动作**: 移动至串杆 -> 抓取首个料盘 -> 移动至相机位。
   * **视觉识别 (Vision)**:
     * **Input**: 拍摄料盘标签。
     * **Output**: 解析出 `PKG_Code` (六合一码) 及 `Dimensions` (直径/厚度)。
     * **异常处理 Logic**:
       * 若比对 (PKG vs 视觉) 失败 -> 控制系统报错。
-      * **重试机制**: WMS/Control 需支持最多 **3次** 信息重发握手，若仍失败则报警人工处理。
+      * **重试机制**: WMS/Control 需支持最多 **3次** 信息重发握手，若仍失败触发以下流程：
+        1. **报警**: 控制系统在界面显示 "料盘识别失败 - PKG: [料盘编号]"
+        2. **人工介入选项**:
+           * **选项 A - 手动输入**: 操作员在界面手动输入 PKG 码，WMS 校验后继续流程
+           * **选项 B - 剔除料盘**: 机械臂将料盘放入"异常料框"，标记为 `Status=Identification_Failed`，继续处理下一个料盘
+           * **选项 C - 暂停作业**: 停止当前栈板作业，等待人工排查（例如：标签损坏、摄像头故障）
+        3. **追溯记录**: WMS 记录异常事件 `(PalletID, ReelPosition, Timestamp, Resolution)`
+        4. **异常料盘后续处理**: 由仓库管理员在异常料框中重新贴标或移除不良品
 
   **Step 3: WMS 箱位分配算法 (Bin Assignment Logic)**
 
@@ -545,6 +636,9 @@ sequenceDiagram
        * `Vendor Code` (供应商码).
        * `DateCode` (批次日期码).
        * `Diameter` (料盘直径) - **关键**: 确保相同尺寸的料盘放入同一箱的同类储位。
+       * `Thickness` (料盘厚度) - **容差范围**: `|ActualThickness - ReelThickness| <= 容差阈值(例如: 0.5mm)`
+         * **原理**: 同一储位的料盘厚度应一致，避免因批次差异或视觉识别误差导致容量计算偏差
+         * **异常处理**: 若厚度超出容差范围，视为不同批次，分配到新的储位或新箱
     2. **容量校验 (Check Capacity)**:
        * 若找到活跃箱 -> 检查该箱内对应 **储位 (Reel Slot)** 剩余深度是否足够 (`RemainingDepth >= Thickness`).
        * 若足够 -> 返回 `(BinPos, BinSlotID)`.
@@ -610,16 +704,16 @@ sequenceDiagram
         WMS->>WMS: 扣减栈板库存
         WMS-->>Operator: 确认拆箱
         Operator->>Operator: 拆箱+串杆+按Ready
-    
+  
         Robot->>Robot: 抓取料盘至相机位
         Robot->>Control: 扫描PKG+尺寸
         Control->>Control: 比对PKG vs 视觉
         Control->>WMS: 上报PKG+Diameter+Thickness
-    
+  
         Note over Operator,Robot: Step 3-4: 分配与放入
         WMS->>WMS: 查找活跃箱<br/>(GRN+Vendor+DC+Diameter)
         WMS->>WMS: 检查容量<br/>(RemainingDepth≥Thickness)
-    
+  
         alt 能分配箱位
             WMS-->>Control: 返回(BinPos, SlotID)
             Robot->>Robot: 放入料盘至指定位置
@@ -662,10 +756,28 @@ sequenceDiagram
 
   * **事件**: 单层货架到达 "SMT待入库缓存区"。
   * **WMS 分析**: 扫描 4 个 **箱位 (Bin Positions)** 状态，计算容量利用率。
+  * **PlanVolume 计算方法 (Plan Volume Calculation)**:
+    * **定义**: PlanVolume 是料箱的**预计最大容量**，用于判断是否满箱。
+    * **计算逻辑**:
+      1. 在装箱作业（3.3.1）时，WMS 记录每个料箱的 `EstimatedMaxVolume`：
+         * `EstimatedMaxVolume = Σ(每个储位的最大容纳料盘数 × 已分配该储位的料盘厚度)`
+         * 例如：Type A 箱（6 个 7寸储位），若全部分配 7寸料盘，每储位深度 100mm，每料盘厚度 12mm，则单储位最大 8 个料盘
+      2. 装箱完成时，WMS 计算 `PlanVolume = Σ(每个储位的预计最大料盘数)`
+      3. 入库时，`ActualVolume = Σ(每个储位的实际料盘数)`
+    * **动态调整**: 如果装箱时混合了不同尺寸料盘（例如 Type B 箱既有 7寸又有 13寸），PlanVolume 按已分配储位的类型分别计算
+    * **记录**: WMS 在单层货架元数据中保存 `PlanVolume` 字段，供入库时使用
   * **满箱模式判断 (Full Bin Trigger)**:
     * 条件 1: 料箱 `ActualVolume / PlanVolume >= 80%`.
-    * 条件 2: SMT 存储区五层货架有可用的空料箱。
+    * 条件 2: SMT 存储区及空箱存放区中存在可用的**交换资源**（空箱或空位），即 `ExchangeCapacityAvailable = True`。
     * **结果**: 满足上述条件触发 "满箱交换" 模式；否则为 "Partial Pipeline Picking".
+  * **空箱位处理逻辑 (Empty Bin Position Handling)**:
+    * **场景**: 单层货架 4 个箱位中部分为空（例如：人工提前 Finish 或装箱未满）
+    * **处理规则**:
+      1. **识别**: WMS 扫描箱位状态，标记为 `Status=Empty` 的箱位
+      2. **满箱交换模式**: 空箱位不参与交换，保持为空
+      3. **零散入库模式**: 空箱位不参与拣选，忽略
+      4. **状态更新**: 入库完成后，WMS 更新单层货架状态，空箱位标记为 `EmptyBinPosition`，回流后可重新使用
+    * **边界情况**: 若 4 个箱位全部为空 → WMS 直接生成空架回流任务，无需入库操作
   * **路径决策**:
     * 仅 `FullBins` -> 直送 "满箱交换区"。
     * 仅 `PartialBins` -> 直送 "流水线待拣区 (Pipeline Picking Area)"。
@@ -674,21 +786,22 @@ sequenceDiagram
   **Step 2: 满箱交换作业 (Phase 1: Full Bin Exchange)**
 
   * **地点**: 满箱交换区。
-  * **循环逻辑**: 针对每一个需入库的 `FullBin`，执行以下闭环操作：
-    1. **抓取满箱 (Pick Full)**:
-       * RCS 指令 CTU 移动至单层货架作业位。
-       * CTU 伸缩叉从单层货架 `SourcePos` 抓取满料箱。
-    2. **放置满箱 (Place Full)**:
-       * CTU 移动至五层货架作业位。
-       * 将满料箱放入五层货架 `TargetPos` (空闲位)。
-    3. **补充空箱 (Replenish Empty)**:
-       * WMS 锁定五层货架上的一个可用空箱 `EmptyBinPos`。
-       * CTU 移动至 `EmptyBinPos` 抓取空箱。
-       * CTU 返回单层货架，将空箱放入原 `SourcePos`。
-    4. **状态更新**:
-       * 每次动作完成后，RCS 反馈 WMS。
-       * WMS 更新单层货架 `SourcePos` 状态为 `Status=EmptyBin`。
-  * **转运**: 若仍有 `PartialBins`，WMS 生成搬运任务: `Move(LayerRack, From=Exchange, To=PipelinePicking)`.
+  * **空箱库存管理 (Empty Bin Inventory Management)**:
+    * **资源范围**: WMS 维护两类空箱资源：五层货架上的空箱 (`EmptyBinOnRack`) 与 **空箱存放区 (Empty Bin Area)** 中待用空箱 (`EmptyBinInArea`)。
+    * **预警机制**: 当 `EmptyBinOnRack + EmptyBinInArea < FullBinCount + SafetyStock(例如: 5)` 时触发预警，由运营/设备人员评估是否需要提前补充空箱。
+    * **降级策略**: 若空箱总量长期不足，可通过参数关闭当前波次的“满箱交换”，将对应 `FullBins` 降级为零散入库处理。
+  * **交换指令与循环逻辑 (Exchange Commands & Loop)**: 针对每一个需入库的 `FullBin`，WMS 仅以任务形式指令 RCS 完成交换，利用 CTU 多货位能力 (Capacity=5, 最多可同时携带 5 个料箱) 在内部完成具体抓取/放置顺序：
+    * **情形 A: 五层货架有空箱 (Direct Swap)**:
+      * **条件**: 目标五层货架上有状态为 `EmptyBin` 的现成料箱。
+      * **动作**: RCS 调度 CTU 通过一次交互完成交换（取走 FullBin，放入 EmptyBin）。
+    * **情形 B: 五层货架有空位 (Put & Fetch)**:
+      * **条件**: 目标五层货架上有物理空位 `EmptySlot` (无箱)，但无现成空箱。
+      * **动作 1 (Put)**: CTU 将 FullBin 放入五层货架的 `EmptySlot`。
+      * **动作 2 (Fetch)**: CTU 前往 **空箱存放区 (Empty Bin Area)** 抓取一个新的空箱。
+      * **动作 3 (Replenish)**: CTU 返回单层货架，将新空箱放入原位。
+      * *注*: 此逻辑同时也解决了空箱补充问题，确保持续作业。
+    * **状态更新**: WMS 更新单层货架 `SourcePos` 状态为 `Status=EmptyBin`，更新五层货架库存。
+
 
   **Step 3: 零散料盘入库 (Phase 2: Partial Reel Transfer)**
 
@@ -696,12 +809,35 @@ sequenceDiagram
   * **场景**: 单层货架停靠在机械臂作业位侧边，目标料箱通过流水线到位。
   * **子流程**:
     1. **目标箱到位 (Target Bin Prep)**:
-       * WMS 锁定存储区中的目标料箱 (Target Bin)。
+       * **WMS 锁定存储区中的目标料箱 (Target Bin)** - **选择规则**:
+         1. **匹配条件** (与 3.3.1 活跃箱逻辑一致):
+            * 相同 `GRN` (收货单号)
+            * 相同 `Vendor Code` (供应商码)
+            * 相同 `DateCode` (批次日期码)
+            * 相同 `Diameter` (料盘直径)
+            * 厚度容差范围: `|Thickness差异| <= 0.5mm`
+         2. **容量校验**: 检查 Target Bin 剩余空间 `RemainingSlots > 0` 且 `RemainingDepth >= 待放入料盘厚度`
+         3. **优先级**: 优先选择已有同类物料且剩余空间较少的料箱（提高料箱利用率）
+         4. **创建新箱**: 若无合适的 Target Bin，WMS 从五层货架调取空箱并初始化为新的 Target Bin
+         5. **容量满处理**: 若 Target Bin 在拣选过程中满了 → WMS 回库当前 Target Bin → 调取新的 Target Bin 继续
        * RCS 调度 CTU 将 Target Bin 搬运至 **流水线进箱区 (Pipeline Intake)**。
        * 控制系统驱动流水线，将 Target Bin 输送至 **机械臂作业位**。
     2. **机械臂拣选 (Robot Picking)**:
        * 机械臂从单层货架 `SourcePos` (Partial Bin) 抓取料盘。
        * 通过相机识别 PKG 六合一码。
+       * **重复识别校验逻辑 (Duplicate Scan Verification)**:
+         1. **目的**: 校验料盘在装箱（3.3.1）和入库（3.3.2）两次识别的一致性，防止混料或数据错误
+         2. **校验流程**:
+            * 机械臂扫描 PKG 码 → WMS 接收 `PKG_ID`
+            * WMS 查询该料盘在装箱时的 `Original_PKG_ID`（从单层货架库存明细中获取）
+            * 对比: `PKG_ID == Original_PKG_ID`
+         3. **一致性检查**:
+            * **匹配成功** → 继续入库流程
+            * **不匹配** → 触发异常处理:
+              - 报警: "料盘 PKG 不匹配，装箱记录 vs 入库扫描"
+              - 选项 A: 人工确认 PKG 码，更新库存数据
+              - 选项 B: 将料盘放入异常料框，标记为 `Status=PKG_Mismatch`
+              - 记录日志: `(PalletID, BinPos, Original_PKG, Scanned_PKG, Timestamp)`
        * 放入流水线上的 Target Bin 中指定储位。
        * 数据交互: `Robot -> Control -> WMS (Inbound Transfer)`.
     3. **目标箱回库 (Target Bin Return)**:
@@ -749,41 +885,41 @@ sequenceDiagram
         WMS->>RCS: 生成搬运任务<br/>(LayerRack→ExchangeArea)
         RCS->>AGV: 调度AGV搬运
         AGV-->>WMS: 到达满箱交换区
-    
+  
         WMS->>RCS: 生成搬运任务<br/>(5-LayerRack→ExchangeBuffer)
         RCS->>AGV: 调度五层货架至缓存区
         AGV-->>WMS: 五层货架到位
-    
+  
         loop 遍历每个FullBin
             WMS->>RCS: CTU交换任务<br/>(FullBin, EmptyBin, 角度)
-        
+    
             Note over CTU,LayerRack: 抓取满箱
             RCS->>CTU: 移动至单层架
             CTU->>LayerRack: 扫描并抓取FullBin
             CTU-->>RCS: 抓取完成
-        
+    
             Note over CTU,FiveRack: 放入五层架
             RCS->>CTU: 移动至五层架
             CTU->>WMS: 扫描目标空位
             WMS-->>CTU: 确认TargetPos
             CTU->>FiveRack: 放入FullBin
             CTU-->>RCS: 放入完成
-        
+    
             Note over CTU,FiveRack: 补充空箱
             WMS->>WMS: 锁定五层架EmptyBin
             RCS->>CTU: 移动至EmptyBinPos
             CTU->>FiveRack: 抓取EmptyBin
             CTU-->>RCS: 抓取完成
-        
+    
             RCS->>CTU: 移动至单层架
             CTU->>LayerRack: 放入EmptyBin至原位
             CTU-->>RCS: 放入完成
             RCS-->>WMS: CTU交换完成
-        
+    
             WMS->>WMS: 更新单层架状态<br/>(SourcePos=EmptyBin)
             WMS->>WMS: 更新五层架库存
         end
-    
+  
         WMS->>WMS: 检查是否还有PartialBins
         alt 存在PartialBins
             WMS->>RCS: 搬运至流水线待拣区<br/>(Exchange→PipelinePicking)
@@ -797,7 +933,7 @@ sequenceDiagram
     Note over WMS,FiveRack: Phase 2: 零散料盘入库(如有)
     alt 存在PartialBins或仅零散模式
         WMS->>RCS: 确保单层架在<br/>流水线待拣区
-    
+  
         loop 遍历PartialBins
             WMS->>WMS: 锁定目标料箱<br/>(TargetBin)
             WMS->>RCS: CTU搬运任务<br/>(TargetBin→PipelineIntake)
@@ -805,28 +941,28 @@ sequenceDiagram
             CTU->>FiveRack: 从五层架抓取
             CTU->>Control: 放入流水线进箱区
             Control-->>WMS: 到位确认
-        
+    
             Control->>Control: 流水线输送至机械臂位
-        
+    
             loop 清空PartialBin料盘
                 Robot->>LayerRack: 从单层架抓取料盘
                 Robot->>Robot: 扫描PKG六合一
                 Robot->>WMS: 上报PKG信息
                 WMS->>WMS: 校验GRN+Vendor+DC
                 WMS-->>Control: 确认可放入
-            
+        
                 Robot->>Control: 放入TargetBin指定储位
                 Control->>WMS: 上报放入完成
                 WMS->>WMS: 入库转运处理<br/>更新库存
             end
-        
+    
             Control->>Control: 流水线送至出箱区
             WMS->>RCS: CTU回库任务<br/>(TargetBin→5-LayerRack)
             RCS->>CTU: 搬运至五层架
             CTU->>FiveRack: 放回存储区
             CTU-->>WMS: 回库完成
         end
-    
+  
         WMS->>WMS: 确认单层架所有Bins已清空
     end
   
@@ -868,14 +1004,47 @@ sequenceDiagram
   * **任务生成**: 依据上述策略生成 `Issue Task`.
   * WMS 调用 `3.8.4 生产发料分配策略`，基于工单所有物料需求，输出 **最优任务队列 (Task Queue)**。
   * **队列结构**: `[R1(SideA), R1(SideB), R2(SideA), Bin3, Bin5...]`.
+  * **库存可用性校验与动态调整 (Inventory Validation & Dynamic Adjustment)**:
+    * **执行前校验**: 在任务队列开始执行前 (Step 2 启动前)，WMS 执行 **二次库存校验**：
+      1. 遍历队列中的每个节点 (Rack/Bin/Slot)
+      2. 检查库存状态是否仍为 `Status=Available` 且未被其他任务锁定
+      3. 检查实际库存数量 `ActualQty >= PlannedQty`
+    * **异常情况处理**:
+      * **情况 A - 库存被锁定**: 若某节点已被其他任务锁定（例如：紧急工单、库存调整、盘点），触发局部重算：
+        1. WMS 从候选库存池中查找替代料盘 (相同 Material + 符合 FIFO + 未锁定)
+        2. 替换队列中的该节点，更新 `Task Queue`
+        3. 记录替换日志 `(Original_Node, Replacement_Node, Reason, Timestamp)`
+      * **情况 B - 库存数量不足**: 若某节点 `ActualQty < PlannedQty`（例如：库存差异、误操作），触发短缺处理：
+        1. 查找多个替代料盘凑齐所需数量
+        2. 若无法凑齐，标记为 `Shortage_Item`，通知计划员确认是否继续
+        3. 可选策略：允许部分发料（配置项：`Allow_Partial_Issue=True/False`）
+      * **情况 C - 全局重算**: 若多个节点异常且无法局部替换，WMS 重新调用 3.8.4 算法完整重算任务队列
+    * **锁定库存**: 校验通过后，WMS 对队列中的所有节点执行 **库存锁定** (`Status=Reserved_For_Issue`)，防止执行期间被其他任务占用
+    * **超时释放**: 若任务队列在 N 小时内未完成执行（配置参数），自动释放锁定状态，触发任务重算
+
+  **Step 1.5: 容器出库前准备 (Pre-Retrieval Preparation)**
 
   **Step 2: 容器出库与波次执行 (Retrieval & Wave Execution)**
 
   * **滚动执行 (Rolling Execution)**:
-    * **Task F (Transport Rack)**: 调度空转运架至 Pos B (保持常驻，直到装满或工单结束)。
+    * **Task F (Transport Rack)**: 调度转运架至 Pos B (保持常驻，直到装满或工单结束)。
     * **Task A/B Queue (Source Racks)**: 按队列顺序，**分批次** 调度来源载体 (Return Rack / 5-Layer Inventory) 至 Pos A / 缓存区。
-    * **动态缓冲**:
-      * 当前一个 Source Rack 在作业时，下一个 Source Rack 应调度至 "待命区 (Buffer)"，减少机械臂等待时间。
+    * **动态缓冲与预缓存策略 (Dynamic Buffering & Pre-caching)**:
+      * **目标**: 减少机械臂等待时间，提高系统利用率
+      * **Buffer 区容量规划**:
+        - **Pos A**: 当前作业位（1 个 Rack/Bin）
+        - **Buffer 待命区**: 预缓存位（1-2 个 Rack，具体根据现场空间配置）
+        - **流水线缓存**: 可容纳 N 个料箱（N 为流水线设计参数，例如 3-5 个）
+      * **预缓存触发条件**:
+        1. **基于剩余任务数**: 当前 Source Rack 剩余任务数 `<= 预警阈值(例如: 10 个料盘)` 时，触发下一个 Rack 的调度
+        2. **基于时间估算**: 根据机械臂平均拣选速度（例如：15 秒/料盘），预估当前 Rack 剩余作业时间 `<= AGV 搬运时间 + 10%缓冲` 时，开始预缓存
+        3. **流水线模式提前触发**: 若下一个节点为 SourceBin（流水线模式），提前触发 CTU 调度，利用流水线缓存能力
+      * **切换逻辑**:
+        - Source Rack A 作业完成 → RCS 指令 AGV 移出 → Buffer 中的 Rack B 立即移动至 Pos A → 机械臂无缝开始拣选 Rack B
+        - 同时，WMS 调度下一个 Rack C 至 Buffer 待命区
+      * **异常处理**:
+        - **预缓存延迟**: 若 Buffer Rack 未按时到位 → 机械臂进入等待状态 → RCS 上报延迟事件 → WMS 记录日志并重新评估预缓存触发阈值
+        - **Buffer 区满**: 若 Buffer 区已满（2 个 Rack 待命），暂停后续调度，等待当前 Rack 移出释放空间
 
   **Step 3: 流水线供料 (Pipeline Feeding)**
 
@@ -915,15 +1084,22 @@ sequenceDiagram
       participant Control as 流水线控制系统
       participant Robot as 机械臂
 
-      Note over WMS,Robot: Step 1: 策略计算
+      Note over WMS,Robot: Step 1: 策略计算 + 库存校验
       WMS->>WMS: 接收工单 -> 计算 SourceQueue<br/>[R1, R2, BinA, BinB...]
+      WMS->>WMS: 执行二次库存校验
+      alt 库存异常
+          WMS->>WMS: 局部替换/全局重算
+      end
+      WMS->>WMS: 锁定库存 (Reserved_For_Issue)
 
       Note over WMS,Robot: Step 2: 容器调度 (Rolling)
       WMS->>RCS: 调度空TransportRack → Pos B
+      RCS->>AGV: 搬运转运架到位
 
       loop 遍历 SourceQueue
           WMS->>RCS: 调度当前 SourceRack → Pos A (或流水线)
           RCS->>AGV: 搬运到位
+          AGV-->>WMS: 到位确认
 
           Note over WMS,Robot: Step 3: 面相与拣选
           opt 需要旋转
@@ -932,8 +1108,56 @@ sequenceDiagram
           end
 
           loop 批量拣选(Batch Pick)
-              Robot->>Robot: 抓取 -> 扫描 -> 放置
-              Control-->>WMS: Task Confirm
+              Robot->>Robot: 移动至 SourcePos
+              Robot->>Robot: 抓取料盘
+
+              alt 抓取失败
+                  Robot->>Control: 报警: 抓取失败
+                  Control->>Robot: 重试抓取 (最多3次)
+                  alt 重试仍失败
+                      Control->>WMS: 上报异常<br/>(SourcePos, Reason=Grasp_Failed)
+                      WMS->>WMS: 标记该储位异常<br/>跳过该料盘
+                      WMS->>WMS: 记录异常日志
+                      Note over WMS: 继续下一个料盘
+                  end
+              else 抓取成功
+                  Robot->>Robot: 移动至扫描位
+                  Robot->>Control: 扫描PKG码
+
+                  alt 扫描失败或PKG不匹配
+                      Control->>Robot: 重新扫描 (最多3次)
+                      alt 重试仍失败
+                          Control->>WMS: 上报异常<br/>(PKG=Unknown/Mismatch)
+                          WMS->>Control: 指令: 放入异常料框
+                          Robot->>Robot: 将料盘放入异常区
+                          WMS->>WMS: 标记异常 + 记录日志
+                      else 扫描成功
+                          Control->>WMS: 上报PKG码
+                          WMS-->>Control: 校验通过
+                      end
+                  else 扫描成功
+                      Control->>WMS: 上报PKG码
+                      WMS-->>Control: 校验通过 + 返回目标位置
+                  end
+
+                  Robot->>Robot: 移动至TransportRack
+                  Robot->>Robot: 放置料盘至目标位
+
+                  alt 放置失败
+                      Robot->>Control: 报警: 放置失败
+                      Control->>Robot: 重试放置 (最多3次)
+                      alt 重试仍失败
+                          Control->>WMS: 上报异常<br/>(Reason=Place_Failed)
+                          WMS->>Control: 暂停任务 + 人工介入
+                      else 放置成功
+                          Control->>WMS: Task Confirm
+                          WMS->>WMS: 更新库存: Status=Issued
+                      end
+                  else 放置成功
+                      Control->>WMS: Task Confirm
+                      WMS->>WMS: 更新库存: Status=Issued
+                  end
+              end
           end
 
           WMS->>RCS: 移出当前 SourceRack
@@ -998,6 +1222,35 @@ sequenceDiagram
       WMS->>RCS: 回库任务 (Manual Cache → Storage)
       RCS->>AGV: 搬运货架回库
   ```
+
+#### 3.3.3.3 空箱回流与补给 (Empty Bin Return & Replenishment)
+
+- **作业范围**: 定义 SMT 产线消耗物料后产生的空箱如何回流，并补充至 3.3.2 中的 **空箱存放区 (Empty Bin Area)**，形成闭环。
+- **业务目标**: 确保满箱交换与零散入库长期有稳定的空箱供给，避免“空箱匮乏与循环”瓶颈。
+
+  **Step 1: 产线产生空箱 (Empty Bin at Line)**
+
+  * **自动线**: 机械臂/贴片机检测到料箱耗尽后，通过接口上报 `Bin_Empty(BinID, LineID)` 给 WMS。
+  * **人工线**: 产线人员在 PDA 上扫描空箱条码，选择“空箱回收”，上报 `BinID + Line_Area`。
+
+  **Step 2: 空箱回收任务 (Return Task)**
+
+  * WMS 将空箱按区域聚合，生成回收任务:
+    * `Move(EmptyBin, From=Line_Return_Area, To=Empty_Bin_Area)`；或
+    * `Move(ReturnRack, From=Line_Return_Area, To=Empty_Bin_Area)`，当空箱被集中放在退料货架上时。
+  * RCS 调度 AGV/CTU 将承载空箱的货架或料箱搬运至空箱存放区。
+
+  **Step 3: 空箱入库与状态更新 (Putaway & Status Update)**
+
+  * 空箱到达空箱存放区后:
+    * WMS 将对应 `BinID` 状态更新为 `Status=EmptyBin`，`Location=Empty_Bin_Area`；
+    * 若空箱仍在五层货架上，则保持 `Location=5-LayerRack_XY` 但同样标记为 `Status=EmptyBin`。
+  * 这些空箱将作为 3.3.2 Step 2 **情形 B: 五层货架有空位 (Put & Fetch)** 中 CTU 从空箱存放区抓取的补给来源。
+
+  **Step 4: 监控与预警 (Monitoring & Alerting)**
+
+  * WMS 对空箱存放区设置最小安全库存 `MinEmptyBinInArea`。
+  * 当 `EmptyBinInArea < MinEmptyBinInArea` 时，触发运营预警，用于安排人工整理退料货架或追加采购空箱。
 
 ### 3.4 特殊物料入库流程 (Special Material Inbound)
 
@@ -1065,6 +1318,86 @@ sequenceDiagram
     * 人工打开干燥柜门 -> 扫描柜内储位 -> 放入 -> 更新温湿度监控状态。
   * **异形货架 (Irregular)**:
     * 人工将超大物料放入平铺货架/挂架 -> 扫描位置码 -> 完成。
+
+#### 3.4.3 PCB 与 Bulk 物料 (PCB & Bulk Materials)
+
+- **适用范围**: **PCB (印制电路板)** 和 **Bulk (散料/抛料)** 的入库存储流程。
+- **物料特性**:
+
+  * **PCB**: 大尺寸、薄型、需防静电、防潮、平放存储
+  * **Bulk**: 小型散装元件（例如：电阻/电容散料、螺丝等），按箱/袋存储
+- **详细交互流程 (Step-by-Step Interactions)**:
+
+  **Step 1: 收货与识别 (Receiving & Identification)**
+
+  * **路径**: 码头 -> **收货暂存区 (Buffer Area)**（与标准流程相同，见 3.2.1）。
+  * **属性识别**:
+    * WMS 根据物料主数据 `Material_Type` 识别:
+      - `PCB` → 进入 PCB 专用流程
+      - `Bulk` → 进入 Bulk 专用流程
+
+  **Step 2: IQC 检验 (Quality Inspection)**
+
+  * **PCB IQC**:
+    * QMS 计算抽样比例 → 生成 IQC 任务（同 3.2.2 流程）
+    * 检验重点: 外观、尺寸、防潮包装完整性
+  * **Bulk IQC**:
+    * 通常为外观检查和数量抽检，检验周期较短
+
+  **Step 3: 绑定与路由 (Binding & Routing)**
+
+  * **PCB 绑定**:
+    * 作业区人员使用 PDA 扫描栈板 → 扫描 PCB 包装箱外箱码 → 绑定六合一码
+    * WMS 记录: `(PalletID, GRN, PCB_BoxID, Qty, DateCode)`
+  * **Bulk 绑定**:
+    * 扫描栈板 → 扫描散料箱/袋条码 → 绑定到 GRN
+    * WMS 记录: `(PalletID, GRN, Bulk_Bag/BoxID, Qty)`
+  * **路由决策**:
+    * **自动路由**: WMS 根据存储区可用性自动分配储位
+    * **人工选址**: 仓库管理员手动选择目标存储区域
+
+  **Step 4: 搬运与上架 (Transport & Putaway)**
+
+  * **PCB 上架**:
+    * **存储位置**: **PCB_Storage (PCB 专用存储区)**
+      - 物理形式: 单层货架（Layer Rack）**水平平放**，或专用 PCB 立式货架
+      - 每层可存放 1-2 个栈板（根据 PCB 尺寸）
+    * **搬运**: RCS 调度 **E-AGV** 将栈板搬运至 PCB_Storage
+    * **上架作业**:
+      1. AGV 将栈板送达指定储位
+      2. 仓库人员（或自动化设备）将 PCB 箱从栈板转移至货架层
+      3. PDA 扫描储位码 → 确认上架 → WMS 更新库存状态 `Status=Available, Location=PCB_Storage_XX`
+    * **特殊要求**:
+      - 防静电: PCB 存储区需配备防静电地垫和设施
+      - 防潮: 控制湿度 < 60% RH
+      - 平放要求: PCB 不可竖立存放，避免变形
+  * **Bulk 上架**:
+    * **存储位置**: **五层货架 (5-Layer Rack)** 或 **散料专用区 (Bulk Storage Area)**
+      - 根据 Bulk 物料尺寸和重量，选择合适储位（小件 → 料箱储位，大件 → 货架托盘位）
+    * **搬运**: RCS 调度 AGV 至目标存储区
+    * **上架作业**:
+      1. 仓库人员从栈板拆分 Bulk 箱/袋
+      2. 根据 WMS 推荐储位，将 Bulk 放入货架
+      3. PDA 扫描储位码 → 确认上架 → WMS 更新库存 `Status=Available, Location=Bulk_Rack_XX`
+    * **特殊要求**:
+      - 分类存储: 按物料类型（电阻/电容/螺丝等）分区存放
+      - 先进先出 (FIFO): 优先消耗早到批次
+
+  **Step 5: 发料支持 (Issue Support)**
+
+  * **PCB 发料**:
+    * 采用 **整架发料** 模式（见 3.3.3.2 人工线发料）
+    * WMS 生成任务: `Move(PCB_Rack, From=PCB_Storage, To=Manual_Line_Cache)`
+    * 产线人员手工从货架取走所需 PCB → PDA 确认领料
+  * **Bulk 发料**:
+    * **人工拣选模式**: WMS 生成拣货单 → 仓库人员根据单据从散料区拣选 → 配送至产线
+    * **整箱发料模式**: 若需求量大，直接搬运整箱至产线缓存区
+
+**PCB/Bulk 与其他物料的关系**：
+
+- PCB 和 Bulk 不经过 **3.3.1 SMT 装箱流程**（不适用自动装箱）
+- 上架后库存状态为 `Available`，与 SMT 电子料共享同一库存池，可统一调度发料
+- 发料时优先通过人工线（3.3.3.2），不经过机械臂自动拣选（物料形态不适合）
 
 ### 3.5 机构件物流 (Mechanical Parts Logistics)
 
@@ -1135,7 +1468,7 @@ sequenceDiagram
     loop 每箱作业
         Control->>WMS: API: Verify_Box(PKG_Code)
         WMS-->>Control: Result: OK/NG
-    
+  
         alt OK
             loop 每件作业
                 Control->>WMS: API: Upload_Association(BoxPKG, ItemSN)
@@ -1267,7 +1600,7 @@ sequenceDiagram
         XRay->>XRay: 清点料盘数量
         XRay->>Control: 返回实际数量
         Control->>WMS: 上报旧PKG+实际数量
-    
+  
         WMS->>WMS: 生成新PKG六合一<br/>(保留旧料号追溯)
         WMS->>Control: 下发新PKG信息
         Control->>Robot: 打印新标签
@@ -1315,7 +1648,7 @@ sequenceDiagram
                 Control->>WMS: 确认完成
             end
         end
-    
+  
         WMS->>WMS: 检查退料货架状态
         alt 单面已满
             WMS->>RCS: 发送旋转指令<br/>Rotate(RackID, 180°)
@@ -1437,11 +1770,12 @@ sequenceDiagram
 
 - **Input**:
   * `LayerRack`: 待入库的单层货架.
-  * `StorageState`: 五层货架存储区的空箱位分布.
+  * `StorageState`: 五层货架存储区的空箱位分布（含空箱与空位）以及 **空箱存放区 (Empty Bin Area)** 的空箱库存快照。
 - **Output**: `Mode` (FullExchange / PartialPick / Hybrid).
 - **Logic**:
   1. **利用率计算**: 遍历单层货架上每个非空 Bin，计算 `Usage = ActualDepth / MaxDepth`.
-  2. **满箱判定**: 若 `Usage >= 80%` AND 五层货架有空位 -> 标记为 `Candidate_Full`.
+  2. **满箱判定与交换资源校验**:
+     * 若 `Usage >= 80%` 且 `ExchangeCapacityAvailable = True`（参考 3.3.2 Step 1 中的定义，包括五层货架空箱/空位 + Empty Bin Area 空箱），则将该 Bin 标记为 `Candidate_Full`.
   3. **路径生成**:
      * `Count(Candidate_Full) == Total_Active_Bins` -> **FullExchange** (直去交换区).
      * `Count(Candidate_Full) == 0` -> **PartialPick** (直去流水线待拣区).
