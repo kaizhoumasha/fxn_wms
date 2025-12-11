@@ -1,9 +1,9 @@
-# Implementation Plan: [FEATURE]
+# Design Plan: [FEATURE]
 
 **Branch**: `[###-feature-name]` | **Date**: [DATE] | **Spec**: [link]
 **Input**: Feature specification from `/specs/[###-feature-name]/spec.md`
 
-**Note**: This template is filled in by the `/speckit.plan` command. See `.specify/templates/commands/plan.md` for the execution workflow.
+**Note**: This template is filled in by the `/speckit.plan` command. Align all content with the Constitution: design-first, traceable to `docs/origin/`, WMS as调度中台 (no PLC/IO coding), bilingual key terms.
 
 ## Summary
 
@@ -31,7 +31,11 @@
 
 *GATE: Must pass before Phase 0 research. Re-check after Phase 1 design.*
 
-[Gates determined based on constitution file]
+- Lifecycle: Spec/Clarify completed; plan scopes only design artifacts (no code by default).
+- Traceability: Link each design element to `docs/origin/` (cite file + section/row).
+- Integration Boundaries: WMS acts as 调度中台; no PLC programming. Interfaces via agreed protocols (e.g., Modbus/MQTT/SSE/WebSocket/HTTP). Vendor responsibilities (point lists, simulators) recorded.
+- Feasibility: Compatible with AGV/RCS/设备能力 and Python/.Net Core constraints; aligns with provided interface specs.
+- Language & Terminology: Chinese primary with bilingual key terms; glossary updated if new terms appear.
 
 ## Project Structure
 
@@ -39,60 +43,27 @@
 
 ```text
 specs/[###-feature]/
-├── plan.md              # This file (/speckit.plan command output)
-├── research.md          # Phase 0 output (/speckit.plan command)
-├── data-model.md        # Phase 1 output (/speckit.plan command)
-├── quickstart.md        # Phase 1 output (/speckit.plan command)
-├── contracts/           # Phase 1 output (/speckit.plan command)
-└── tasks.md             # Phase 2 output (/speckit.tasks command - NOT created by /speckit.plan)
+├── plan.md              # This file (/speckit.plan output)
+├── research.md          # Phase 0 design research
+├── data-model.md        # Data dictionary, keys, reconciliation fields
+├── quickstart.md        # How to read/run design simulations or mocks
+├── contracts/           # Interface definitions (API/protocol payloads, point lists)
+├── diagrams/            # Mermaid/PlantUML flows, sequence diagrams
+├── validations/         # Capacity/performance assumptions, observability probes
+└── tasks.md             # /speckit.tasks output (not created by /speckit.plan)
 ```
 
-### Source Code (repository root)
-<!--
-  ACTION REQUIRED: Replace the placeholder tree below with the concrete layout
-  for this feature. Delete unused options and expand the chosen structure with
-  real paths (e.g., apps/admin, packages/something). The delivered plan must
-  not include Option labels.
--->
+### Integration Assets
 
 ```text
-# [REMOVE IF UNUSED] Option 1: Single project (DEFAULT)
-src/
-├── models/
-├── services/
-├── cli/
-└── lib/
-
-tests/
-├── contract/
-├── integration/
-└── unit/
-
-# [REMOVE IF UNUSED] Option 2: Web application (when "frontend" + "backend" detected)
-backend/
-├── src/
-│   ├── models/
-│   ├── services/
-│   └── api/
-└── tests/
-
-frontend/
-├── src/
-│   ├── components/
-│   ├── pages/
-│   └── services/
-└── tests/
-
-# [REMOVE IF UNUSED] Option 3: Mobile + API (when "iOS/Android" detected)
-api/
-└── [same as backend above]
-
-ios/ or android/
-└── [platform-specific structure: feature modules, UI flows, platform tests]
+integration/
+├── vendor-handovers/    # Responsibilities, simulators, point tables
+└── playbooks/           # Joint test/rollback/runbooks, manual fallback flows
 ```
 
 **Structure Decision**: [Document the selected structure and reference the real
-directories captured above]
+directories captured above. If code is needed, document the actual paths used rather
+than generic templates.]
 
 ## Complexity Tracking
 

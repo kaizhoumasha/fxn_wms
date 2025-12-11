@@ -5,6 +5,8 @@
 **Status**: Draft  
 **Input**: User description: "$ARGUMENTS"
 
+**Note**: Focus on业务/设计层面。WMS 作为调度中台，不直接做 PLC/设备 IO；设备交互通过工控机或协议 (如 Modbus/MQTT/SSE/WebSocket/HTTP) 与供应商配合完成。避免实现细节。
+
 ## User Scenarios & Testing *(mandatory)*
 
 <!--
