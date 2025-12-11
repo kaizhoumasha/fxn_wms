@@ -1,0 +1,697 @@
+<!doctype html>
+<html>
+
+<head>
+    <meta charset='UTF-8' />
+    <script
+        src='file:///Users/kaizhou/SynologyDrive/works/fxn-wms/.mermaid-cli/node_modules/mermaid/dist/mermaid.min.js'></script>
+    <style>
+        body {
+            margin: 0;
+            padding: 16px;
+            font-family: Arial, sans-serif;
+        }
+
+        h2 {
+            font-size: 18px;
+            margin-top: 24px;
+        }
+
+        .mermaid {
+            margin-bottom: 24px;
+        }
+    </style>
+</head>
+
+<body>
+    <h2>diagram_01.mmd</h2>
+    <div class='mermaid'>
+        sequenceDiagram
+        participant Operator as 仓库人员<br />(PDA)
+        participant WMS as WMS系统
+        participant SAP as SAP
+        participant QMS as QMS
+        participant RCS as RCS
+        participant AGV as E-AGV
+
+        Note over Operator,AGV: Step 1: 到货登记与GRN获取
+        Operator->>WMS: 登记到货信息<br />(车牌号/快递号+箱数)
+        Operator->>WMS: 导入到货清单
+        WMS->>SAP: 请求GRN<br />(PO, LineItem, Material, Qty)
+        SAP-->>WMS: 返回GRN单号列表
+
+        Note over Operator,AGV: Step 2: 栈板绑定
+        WMS->>Operator: 生成栈板号
+        Operator->>Operator: 打印栈板条码并粘贴
+        loop 绑定循环
+        Operator->>WMS: 扫描栈板号+箱码<br />选择GRN+扫描地码
+        WMS->>WMS: 校验数量累计
+        end
+        Operator->>WMS: 提交绑定完成
+
+        Note over Operator,AGV: Step 3: 抽检计算
+        WMS->>QMS: 推送GRN+Qty
+        QMS->>QMS: 计算抽样策略
+        QMS-->>WMS: 返回抽样量
+        WMS->>WMS: 标记栈板状态<br />(Needs_IQC/Ready)
+
+        Note over Operator,AGV: Step 4: 搬运任务生成
+        WMS->>RCS: 呼叫搬运任务<br />(From=Dock, To=Target)
+        RCS->>AGV: 调度E-AGV
+        AGV->>AGV: 搬运栈板
+        AGV-->>RCS: 任务完成
+        RCS-->>WMS: 反馈任务状态
+
+    </div>
+    <h2>IQC 检验序列图</h2>
+    <div class='mermaid'>
+        sequenceDiagram
+        participant Operator as IQC人员<br />(PDA)
+        participant WMS as WMS系统
+        participant QMS as QMS
+        participant RCS as RCS
+        participant AGV as E-AGV
+
+        Note over Operator,AGV: Step 0: 队列管理
+        WMS->>WMS: 维护IQC待检列表<br />(按系统逻辑排序)
+        alt 需要优先处理急料
+        Operator->>WMS: 手动调整检验顺序<br />(置顶急料)
+        WMS->>WMS: 更新任务优先级
+        end
+        WMS->>RCS: 按优先级呼叫AGV<br />(Buffer→IQC_Waiting)
+        RCS->>AGV: 调度E-AGV搬运
+        AGV-->>WMS: 栈板到达IQC待检区
+
+        Note over Operator,AGV: Step 1: 取样作业
+        Operator->>WMS: 扫描栈板号(PalletID)
+        WMS-->>Operator: 提示需抽检明细
+        loop 取样循环
+        Operator->>Operator: 取出料盘/外箱
+        Operator->>WMS: 扫描PKG六合一码
+        WMS->>WMS: 记录Trace<br />(PalletID, GRN, Material, SampleID)
+        WMS-->>Operator: 标记为Sample Taken
+        end
+        Operator->>Operator: 送检验室检验
+
+        Note over Operator,AGV: Step 2: 归还与结果录入
+        Operator->>Operator: 检验完成
+        Operator->>WMS: 扫描SampleID
+        WMS-->>Operator: 提示对应栈板号
+        Operator->>WMS: 扫描栈板号确认
+        WMS->>WMS: 记录归还<br />(PalletID, SampleID)
+        Operator->>WMS: 提交Inspection Done
+
+        Operator->>QMS: 录入检验结果(OK/NG)
+        QMS->>QMS: 保存判定结果
+        QMS->>WMS: 推送Inspection Result
+
+        Note over Operator,AGV: Step 3: 结果路由
+        WMS->>WMS: 接收QMS结果
+        alt Result = OK
+        WMS->>RCS: 生成任务<br />(IQC_Waiting→Buffer_Area)
+        RCS->>AGV: 调度E-AGV搬运
+        AGV-->>WMS: 搬运完成
+        else Result = NG
+        WMS->>RCS: 生成任务<br />(IQC_Waiting→Review_Area)
+        RCS->>AGV: 调度E-AGV搬运至复判区
+        AGV-->>WMS: 到达复判区
+
+        Note over Operator,AGV: Step 4: 复判与分拣
+        Operator->>Operator: 对NG栈板进行复判
+        Operator->>QMS: 更新复判结果
+        QMS->>WMS: 推送复判结果
+
+        alt 复判OK
+        WMS->>RCS: 生成任务<br />(Review→Buffer_Area)
+        RCS->>AGV: 调度E-AGV搬运
+        AGV-->>WMS: 搬运完成
+        else 复判NG
+        Note over Operator: 人工处理<br />入不良品仓
+        else 挑选(Split Pallet)
+        Operator->>WMS: 启动PDA拆栈板功能
+        Operator->>WMS: 扫描源栈板(SourcePalletID)
+        WMS-->>Operator: 显示栈板明细
+        Operator->>WMS: 扫描新栈板(NewPalletID)<br />(用于放NG品)
+
+        loop 拆分NG物料
+        Operator->>Operator: 取出NG物料箱
+        Operator->>WMS: 扫描NG箱条码
+        WMS->>WMS: 记录移动至NewPallet
+        WMS-->>Operator: 确认已记录
+        end
+
+        Operator->>WMS: 提交拆板完成
+        WMS->>WMS: 更新源栈板库存<br />(现为全OK)
+        WMS->>WMS: 更新新栈板库存<br />(全NG)
+
+        WMS->>RCS: 生成OK栈板任务<br />(Review→Buffer_Area)
+        RCS->>AGV: 调度搬运SourcePallet
+        AGV-->>WMS: OK栈板入库完成
+
+        Note over Operator: 人工扫描NewPallet<br />绑定六合一码<br />入不良品仓
+        end
+        end
+
+    </div>
+    <h2>装箱流程序列图</h2>
+    <div class='mermaid'>
+        sequenceDiagram
+        participant Operator as 仓库人员
+        participant WMS as WMS系统
+        participant RCS as RCS
+        participant AGV as 潜伏式AGV
+        participant Control as 装箱控制系统
+        participant Robot as 机械臂
+
+        Note over Operator,Robot: Step 1: 空架补给与校验
+        Operator->>WMS: 选择叫料模式<br />(Manual/System)
+        WMS->>RCS: 请求空架<br />(LayerRack→Kitting)
+        RCS->>AGV: 调度AGV搬运
+        AGV-->>RCS: 到位确认
+        RCS-->>WMS: 更新状态Ready
+
+        Robot->>Robot: 扫描货架所有箱号
+        Robot->>Control: 上报箱号列表
+        Control->>Control: 校验所有箱为空
+        alt 发现非空箱
+        Control->>Control: 报警并停止
+        Control-->>Operator: 显示异常+等待人工
+        else 全部为空
+        Control->>WMS: 发送箱号+地码
+        loop 最多3次重试
+        WMS-->>Control: 回复OK/NG
+        alt NG或超时
+        Control->>Control: 等待后重发
+        end
+        end
+        end
+
+        Note over Operator,Robot: Step 2: 人工投料与拆栈板
+        WMS->>RCS: 请求栈板<br />(Buffer→Kitting)
+        RCS->>AGV: 搬运栈板至装箱区
+        AGV-->>WMS: 栈板到位
+
+        Operator->>WMS: PDA扫描栈板号
+        WMS-->>Operator: 显示栈板明细
+
+        loop 拆箱循环
+        Operator->>WMS: PDA扫描箱条码
+        WMS->>WMS: 扣减栈板库存
+        WMS-->>Operator: 确认拆箱
+        Operator->>Operator: 拆箱+串杆+按Ready
+
+        Robot->>Robot: 抓取料盘至相机位
+        Robot->>Control: 扫描PKG+尺寸
+        Control->>Control: 比对PKG vs 视觉
+        Control->>WMS: 上报PKG+Diameter+Thickness
+
+        Note over Operator,Robot: Step 3-4: 分配与放入
+        WMS->>WMS: 查找活跃箱<br />(GRN+Vendor+DC+Diameter)
+        WMS->>WMS: 检查容量<br />(RemainingDepth≥Thickness)
+
+        alt 能分配箱位
+        WMS-->>Control: 返回(BinPos, SlotID)
+        Robot->>Robot: 放入料盘至指定位置
+        Robot->>Control: 到位确认
+        Control->>WMS: Put Complete
+        WMS->>WMS: 扣减剩余深度+增加库存
+        else 货架已满
+        WMS-->>Control: 返回RackFull
+        WMS->>RCS: 请求切出满架<br />(Kitting→InboundBuffer)
+        RCS->>AGV: 搬运满架
+        AGV-->>WMS: 满架切出完成
+        WMS->>RCS: 请求补给空架
+        RCS->>AGV: 搬运空架
+        AGV-->>WMS: 空架到位
+        end
+        end
+
+        Note over Operator,Robot: 拆完处理
+        Operator->>WMS: 检查栈板状态
+        alt 栈板已拆完
+        Operator->>WMS: PDA生成空栈板任务
+        WMS->>RCS: 运送至空栈板存放区<br />(Kitting→EmptyPalletArea)
+        RCS->>AGV: 调度搬运空栈板
+        AGV-->>WMS: 空栈板回收完成
+        else 栈板未装完
+        Operator->>WMS: PDA扫描栈板号<br />生成回库任务
+        WMS->>RCS: 运送至收货暂存区<br />(Kitting→Buffer)
+        RCS->>AGV: 调度搬运未装完栈板
+        AGV-->>WMS: 栈板回库完成
+        end
+
+    </div>
+    <h2>混合入库模式序列图</h2>
+    <div class='mermaid'>
+        sequenceDiagram
+        participant WMS as WMS系统
+        participant RCS as RCS
+        participant AGV as 潜伏式AGV
+        participant CTU as CTU
+        participant Control as 流水线控制系统
+        participant Robot as 机械臂
+        participant LayerRack as 单层货架
+        participant FiveRack as 五层货架
+
+        Note over WMS,FiveRack: Step 1: 任务触发与分析
+        AGV->>WMS: 单层货架到达<br />待入库缓存区
+        WMS->>WMS: 扫描4个箱位状态
+        WMS->>WMS: 计算容量利用率<br />(ActualVol/PlanVol)
+
+        WMS->>WMS: 检查存储区空料箱
+        WMS->>WMS: 判断满箱(≥80%)
+        WMS->>WMS: 分类FullBins+PartialBins
+
+        alt 仅FullBins
+        WMS->>WMS: 路径决策→仅满箱交换
+        else 仅PartialBins
+        WMS->>WMS: 路径决策→仅零散入库
+        else Hybrid混合模式
+        WMS->>WMS: 路径决策→先满箱后零散
+        end
+
+        Note over WMS,FiveRack: Phase 1: 满箱交换(如有)
+        alt 存在FullBins
+        WMS->>RCS: 生成搬运任务<br />(LayerRack→ExchangeArea)
+        RCS->>AGV: 调度AGV搬运
+        AGV-->>WMS: 到达满箱交换区
+
+        WMS->>RCS: 生成搬运任务<br />(5-LayerRack→ExchangeBuffer)
+        RCS->>AGV: 调度五层货架至缓存区
+        AGV-->>WMS: 五层货架到位
+
+        loop 遍历每个FullBin
+        WMS->>RCS: CTU交换任务<br />(FullBin, EmptyBin, 角度)
+
+        Note over CTU,LayerRack: 抓取满箱
+        RCS->>CTU: 移动至单层架
+        CTU->>LayerRack: 扫描并抓取FullBin
+        CTU-->>RCS: 抓取完成
+
+        Note over CTU,FiveRack: 放入五层架
+        RCS->>CTU: 移动至五层架
+        CTU->>WMS: 扫描目标空位
+        WMS-->>CTU: 确认TargetPos
+        CTU->>FiveRack: 放入FullBin
+        CTU-->>RCS: 放入完成
+
+        Note over CTU,FiveRack: 补充空箱
+        WMS->>WMS: 锁定五层架EmptyBin
+        RCS->>CTU: 移动至EmptyBinPos
+        CTU->>FiveRack: 抓取EmptyBin
+        CTU-->>RCS: 抓取完成
+
+        RCS->>CTU: 移动至单层架
+        CTU->>LayerRack: 放入EmptyBin至原位
+        CTU-->>RCS: 放入完成
+        RCS-->>WMS: CTU交换完成
+
+        WMS->>WMS: 更新单层架状态<br />(SourcePos=EmptyBin)
+        WMS->>WMS: 更新五层架库存
+        end
+
+        WMS->>WMS: 检查是否还有PartialBins
+        alt 存在PartialBins
+        WMS->>RCS: 搬运至流水线待拣区<br />(Exchange→PipelinePicking)
+        RCS->>AGV: 调度搬运
+        else 无PartialBins
+        WMS->>RCS: 单层架回流<br />(Exchange→KittingArea)
+        RCS->>AGV: 调度搬运
+        end
+        end
+
+        Note over WMS,FiveRack: Phase 2: 零散料盘入库(如有)
+        alt 存在PartialBins或仅零散模式
+        WMS->>RCS: 确保单层架在<br />流水线待拣区
+
+        loop 遍历PartialBins
+        WMS->>WMS: 锁定目标料箱<br />(TargetBin)
+        WMS->>RCS: CTU搬运任务<br />(TargetBin→PipelineIntake)
+        RCS->>CTU: 抓取目标箱
+        CTU->>FiveRack: 从五层架抓取
+        CTU->>Control: 放入流水线进箱区
+        Control-->>WMS: 到位确认
+
+        Control->>Control: 流水线输送至机械臂位
+
+        loop 清空PartialBin料盘
+        Robot->>LayerRack: 从单层架抓取料盘
+        Robot->>Robot: 扫描PKG六合一
+        Robot->>WMS: 上报PKG信息
+        WMS->>WMS: 校验GRN+Vendor+DC
+        WMS-->>Control: 确认可放入
+
+        Robot->>Control: 放入TargetBin指定储位
+        Control->>WMS: 上报放入完成
+        WMS->>WMS: 入库转运处理<br />更新库存
+        end
+
+        Control->>Control: 流水线送至出箱区
+        WMS->>RCS: CTU回库任务<br />(TargetBin→5-LayerRack)
+        RCS->>CTU: 搬运至五层架
+        CTU->>FiveRack: 放回存储区
+        CTU-->>WMS: 回库完成
+        end
+
+        WMS->>WMS: 确认单层架所有Bins已清空
+        end
+
+        Note over WMS,FiveRack: Step 4: 任务结束
+        WMS->>WMS: 更新单层架状态=EmptySupply
+        WMS->>RCS: 单层架回流任务<br />(Picking→KittingOrStorage)
+        RCS->>AGV: 调度搬运
+        AGV-->>WMS: 回流完成
+
+    </div>
+    <h2>SMT 发料机械臂拣选序列图</h2>
+    <div class='mermaid'>
+        sequenceDiagram
+        participant WMS as WMS系统
+        participant RCS as RCS
+        participant AGV as 潜伏式AGV
+        participant CTU as CTU
+        participant Control as 流水线控制系统
+        participant Robot as 机械臂
+
+        Note over WMS,Robot: Step 1: 任务触发与策略计算
+        WMS->>WMS: 接收SAP工单<br />(ProductionOrder)
+        WMS->>WMS: 拆分任务<br />(电子料首套+补料/MSD/PCB/非规则)
+        WMS->>WMS: 计算优先级<br />(退料→FIFO→容量优化)
+
+        Note over WMS,Robot: Step 2: 容器出库与路由分发
+        WMS->>WMS: 判断物料类型
+
+        alt 电子料(自动线)
+        WMS->>RCS: Task A: ReturnRack→PosA
+        WMS->>RCS: Task B: 5-LayerRack→缓存区
+        WMS->>RCS: Task F: EmptyTransportRack→PosB
+        RCS->>AGV: 调度AGV搬运
+        AGV-->>WMS: 电子料容器到位
+
+        Note over WMS,Robot: Step 3-4: 自动线拣选(电子料)
+        WMS->>RCS: CTU搬运SourceBin→流水线
+        RCS->>CTU: 抓取料箱
+        CTU->>Control: 放入流水线进箱区
+        Control->>Control: 输送至机械臂位
+
+        Control->>Control: 扫描ReturnRack+TransportRack号
+        Control->>WMS: 上报货架号
+        WMS->>WMS: 检查面相(Source+Target)
+        alt 需要旋转
+        WMS->>RCS: 旋转指令Rotate(RackID, 180°)
+        RCS->>AGV: 原地旋转货架
+        AGV-->>WMS: 旋转完成
+        end
+
+        loop 直到工单满足或无料
+        WMS->>WMS: 计算拣货任务
+        alt 从退料货架拣选
+        WMS->>Control: 下发拣货指令<br />(SourcePos, Material, Qty, TargetPos)
+        Robot->>Robot: 从ReturnRack抓取料盘
+        Robot->>Control: 扫描PKG六合一
+        Control->>WMS: 上报PKG+尺寸
+        WMS->>WMS: 校验物料+工单
+        WMS-->>Control: 回复OK
+        Robot->>Robot: 插入TransportRack指定储位
+        Control->>WMS: 上报放入完成
+        WMS->>WMS: 工单领料出库转运<br />更新料架位置
+        else 从五层货架料箱拣选
+        WMS->>Control: 下发拣货指令
+        Robot->>Robot: 从SourceBin抓取料盘
+        Robot->>Control: 扫描PKG六合一
+        Control->>WMS: 上报PKG+尺寸
+        WMS-->>Control: 回复OK
+        Robot->>Robot: 插入TransportRack储位
+        Control->>WMS: 上报放入完成
+        WMS->>WMS: 工单领料出库转运
+        end
+
+        alt SourceBin已空
+        Control->>WMS: 料箱作业完成
+        Control->>Control: 流水线送至出箱区
+        WMS->>RCS: CTU回库任务
+        RCS->>CTU: 搬运至五层货架
+        end
+        end
+
+        WMS->>WMS: 检查TransportRack状态
+        alt 已装满或工单完成
+        WMS->>RCS: 配送任务<br />(TransportRack→SMT_Staging)
+        RCS->>AGV: 调度配送
+        end
+
+        else MSD物料(人工线)
+        Note over WMS,Robot: Task C: MSD整架发料
+        WMS->>RCS: 生成搬运任务<br />(5-LayerRack→Manual_Line_Cache)
+        RCS->>AGV: 调度AGV搬运五层货架
+        AGV-->>WMS: 到达人工线缓存区
+        WMS->>WMS: 工单领料出库转运<br />(整架发料Full Rack Issue)
+        Note over WMS: 人工线人员手动取料上线
+
+        else PCB物料(人工线)
+        Note over WMS,Robot: Task D: PCB整架发料
+        WMS->>RCS: 生成搬运任务<br />(Single_Layer_Rack→Manual_Line_Cache)
+        RCS->>AGV: 调度AGV搬运单层货架
+        AGV-->>WMS: 到达人工线缓存区
+        WMS->>WMS: 工单领料出库转运<br />(整架发料Full Rack Issue)
+        Note over WMS: 人工线人员手动取料上线
+
+        else 非规则物料(人工线)
+        Note over WMS,Robot: Task E: 非规则整架发料
+        WMS->>RCS: 生成搬运任务<br />(5-LayerRack→Manual_Line_Cache)
+        RCS->>AGV: 调度AGV搬运五层货架
+        AGV-->>WMS: 到达人工线缓存区
+        WMS->>WMS: 工单领料出库转运<br />(整架发料Full Rack Issue)
+        Note over WMS: 人工线人员手动取料上线
+        end
+
+        Note over WMS,Robot: 容器复位
+        WMS->>WMS: 检查货架作业完成状态
+        alt 五层货架作业完毕
+        WMS->>RCS: 回库任务<br />(5-LayerRack→Storage)
+        RCS->>AGV: 搬运至存储区
+        end
+        alt 退料货架作业完毕
+        WMS->>RCS: 回库任务<br />(ReturnRack→Storage)
+        RCS->>AGV: 搬运至存储区
+        end
+
+    </div>
+    <h2>机构件自动线拆包序列图</h2>
+    <div class='mermaid'>
+        sequenceDiagram
+        participant WMS as WMS系统
+        participant RCS as RCS
+        participant AGV as E-AGV
+        participant Control as 自动线控制系统
+        participant Robot as 机械臂
+
+        Note over WMS,Robot: 栈板上线
+        WMS->>RCS: 生成搬运任务<br />(Pallet→拆围膜区)
+        RCS->>AGV: 调度E-AGV
+        AGV-->>RCS: 到达拆围膜区
+        Note over Control: 人工拆围膜并呼叫
+        RCS->>AGV: 搬运至拆栈板区
+
+        RCS->>Control: 请求放入栈板
+        Control-->>RCS: 回复OK
+        AGV->>AGV: 扫描栈板号
+        alt 栈板号不匹配
+        AGV->>WMS: 异常:栈板号不一致
+        WMS->>WMS: 任务终止+报警
+        else 栈板号匹配
+        AGV->>Control: 放入栈板+确认
+        AGV-->>WMS: 搬运任务完成
+        end
+
+        Note over WMS,Robot: 拆箱与PKG校验(循环)
+        WMS->>Control: 发送启动指令<br />Start(PalletID, BoxQty)
+
+        loop 直到栈板为空
+        Robot->>Robot: 搬运箱子至流水线
+        Robot->>Control: 扫描箱体PKG码
+        Control->>WMS: 上报PKG信息
+
+        WMS->>WMS: 校验物料正确性
+        alt Material Correct
+        WMS-->>Control: 回复OK
+        Control->>Control: 拆箱作业
+
+        loop 箱内机构件循环
+        Robot->>Robot: 机构件放入Magazine
+        Control->>Control: 计数+检测Magazine状态
+
+        alt Magazine已满
+        Control->>RCS: 呼叫Magazine搬运
+        RCS->>AGV: 调度举升滚筒AGV
+        AGV->>AGV: 搬运至产线暂存区
+        AGV-->>RCS: 配送完成
+        RCS-->>Control: 确认Magazine已更换
+
+        Note over RCS,AGV: RCS自主调度
+        RCS->>AGV: 将Magazine从暂存区<br />搬运至产线上料区
+        RCS->>AGV: 将空Magazine从暂存区<br />搬运至自动线存放区
+        end
+        end
+
+        Control->>WMS: 拆箱完成
+        else Material Incorrect
+        WMS-->>Control: 回复NG+异常信息
+        Control->>Control: 剔除该箱至异常区
+        Control->>Control: 界面显示<br />(PKG码+预期料号+实际料号)
+        Control->>Control: 停止作业
+        Note over Control: 等待人工处理异常箱
+        Control->>Control: 人工通过界面<br />手动恢复作业
+        end
+
+        alt 检测到空栈板
+        Control->>WMS: 栈板为空
+        WMS->>RCS: 生成回收任务<br />(EmptyPallet→存放区)
+        RCS->>Control: 请求拉出栈板
+        Control-->>RCS: 回复OK
+        RCS->>AGV: 搬离空栈板
+        AGV-->>WMS: 回收完成
+
+        Note over WMS: 继续处理下一栈板
+        WMS->>RCS: 检查是否有待上线栈板
+        end
+        end
+
+        Note over WMS,Robot: Magazine最终配送
+        alt 作业完成后Magazine未满
+        Control->>RCS: 呼叫配送剩余Magazine
+        RCS->>AGV: 调度举升滚筒AGV
+        AGV->>AGV: 搬运至产线暂存区
+        AGV-->>RCS: 完成
+        end
+
+    </div>
+    <h2>生产退料清点序列图</h2>
+    <div class='mermaid'>
+        sequenceDiagram
+        participant Operator as 仓库人员
+        participant WMS as WMS系统
+        participant LCRDevice as LCR测试仪
+        participant Control as X-Ray控制系统
+        participant XRay as X-Ray设备
+        participant Robot as 机械臂/贴标机
+        participant RCS as RCS
+        participant AGV as 潜伏式AGV
+
+        Note over Operator,AGV: 退料入场与预分拣
+        Operator->>WMS: 扫描栈板号+地码<br />选择目的地(SMT退料区)
+        WMS->>RCS: 生成搬运任务<br />(LayerRack→ReturnArea)
+        RCS->>AGV: 调度搬运
+        AGV-->>WMS: 到位确认
+
+        Operator->>Operator: 预分拣物料<br />(电子料/MSD/高值/非规则)
+        alt 高值/非规则物料
+        Operator->>WMS: 呼叫直发对应区域
+        WMS->>RCS: 直发任务
+        RCS->>AGV: 搬运至对应存储区
+        else 普通电子料/MSD
+        alt MSD物料
+        Operator->>Operator: 检查料盘PKG标签
+        alt 缺少标签
+        Operator->>Operator: 剪下外包装PKG<br />贴在料盘上
+        end
+        end
+        end
+
+        Note over Operator,AGV: LCR测试
+        Operator->>WMS: 扫描PKG码
+        WMS->>WMS: 判断是否需要LCR测试<br />(满盘/未配置→跳过)
+        alt 需要LCR测试
+        WMS-->>Operator: 提示需要测试
+        Operator->>LCRDevice: 执行LCR测试
+        LCRDevice-->>Operator: 返回测试结果
+        Operator->>WMS: 输入测试结果
+        alt 测试失败
+        WMS-->>Operator: 提示放入不良品框
+        Operator->>Operator: 放入不良品框
+        else 测试通过
+        Operator->>Operator: 放入流水线
+        end
+        else 跳过测试
+        Operator->>Operator: 直接放入流水线
+        end
+
+        Note over Operator,AGV: X-Ray清点与贴标
+        Control->>Control: 料盘流向X-Ray
+        Control->>Control: 扫描料盘PKG码
+        Control->>WMS: 上报PKG信息
+
+        WMS->>WMS: 判断是否需要清点<br />(满盘未拆封→跳过)
+        alt 需要清点
+        WMS-->>Control: 指令进行X-Ray清点
+        Control->>XRay: 启动清点
+        XRay->>XRay: 清点料盘数量
+        XRay->>Control: 返回实际数量
+        Control->>WMS: 上报旧PKG+实际数量
+
+        WMS->>WMS: 生成新PKG六合一<br />(保留旧料号追溯)
+        WMS->>Control: 下发新PKG信息
+        Control->>Robot: 打印新标签
+        Robot->>Robot: 核对新旧PKG料号一致性
+        Robot->>Robot: 贴标(确保旧料号可见)
+        Robot->>Control: 扫描新PKG确认
+        Control->>WMS: 上报新PKG确认
+        else 满盘跳过清点
+        WMS-->>Control: 跳过清点,流向机械臂
+        end
+
+        Note over Operator,AGV: 路径决策与上架
+        WMS->>WMS: 判断物料类型与货架状态
+        alt MSD物料
+        WMS-->>Control: 指令放入人工箱
+        Robot->>Robot: 放入人工箱
+        Control->>WMS: 确认完成
+        Note over Operator: 后续人工封包入干燥柜
+        else 普通电子料
+        alt 退料货架有空位
+        WMS-->>Control: 下发储位号
+        Robot->>Robot: 放入退料货架指定储位
+        Control->>WMS: 上报放入完成
+        WMS->>WMS: 退料处理+更新库存
+        else 退料货架已满
+        WMS->>RCS: 呼叫补给空退料架
+        loop 最多3次重试
+        RCS->>Control: 请求放入空架
+        alt Control同意
+        Control-->>RCS: 回复OK
+        RCS->>AGV: 搬运空架至作业位
+        AGV-->>RCS: 放入完成
+        RCS-->>WMS: 反馈Done
+        else Control拒绝或超时
+        Control-->>RCS: 回复NG
+        RCS->>RCS: 等待后重试
+        end
+        end
+        alt 3次重试失败
+        RCS->>WMS: 报警:补给失败
+        WMS->>WMS: 停止作业+人工介入
+        else 补给成功
+        WMS-->>Control: 下发储位号
+        Robot->>Robot: 放入退料货架
+        Control->>WMS: 确认完成
+        end
+        end
+
+        WMS->>WMS: 检查退料货架状态
+        alt 单面已满
+        WMS->>RCS: 发送旋转指令<br />Rotate(RackID, 180°)
+        RCS->>AGV: 原地旋转货架
+        AGV-->>WMS: 旋转完成
+        else 双面均满
+        WMS->>RCS: 生成搬运任务<br />(ReturnRack→Storage)
+        RCS->>AGV: 搬运至SMT存储区
+        AGV-->>WMS: 完成
+        WMS->>RCS: 呼叫新空退料架
+        end
+        end
+
+    </div>
+    <script>mermaid.initialize({ startOnLoad: true });</script>
+</body>
+
+</html>
