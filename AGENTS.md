@@ -3,6 +3,8 @@
 Auto-generated from all feature plans. Last updated: 2025-12-11
 
 ## Active Technologies
+- Python 3.11 / .NET 8（目标实现栈；本阶段仅文档） + 文档/图表：Mermaid、PlantUML；接口协议：HTTP/REST + MQTT/SSE（设备/供应商回传） (002-detailed-design)
+- 本阶段无代码存储；数据字典/契约以文档形式，后续实现预计 PostgreSQL（假设，需在实现阶段确认） (002-detailed-design)
 
 - Documentation phase; downstream实现面向 Python 3.11+ / .NET 8 兼容 + 设计依赖 SAP/MES/RCS/WCS 接口规范，设备协议 Modbus/MQTT/SSE/WebSocket/HTTP，供应商提供点表/模拟器 (001-high-level-design)
 
@@ -22,6 +24,7 @@ cd src [ONLY COMMANDS FOR ACTIVE TECHNOLOGIES][ONLY COMMANDS FOR ACTIVE TECHNOLO
 Documentation phase; downstream实现面向 Python 3.11+ / .NET 8 兼容: Follow standard conventions
 
 ## Recent Changes
+- 002-detailed-design: Added Python 3.11 / .NET 8（目标实现栈；本阶段仅文档） + 文档/图表：Mermaid、PlantUML；接口协议：HTTP/REST + MQTT/SSE（设备/供应商回传）
 
 - 001-high-level-design: Added Documentation phase; downstream实现面向 Python 3.11+ / .NET 8 兼容 + 设计依赖 SAP/MES/RCS/WCS 接口规范，设备协议 Modbus/MQTT/SSE/WebSocket/HTTP，供应商提供点表/模拟器
 
