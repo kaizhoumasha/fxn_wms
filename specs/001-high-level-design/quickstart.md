@@ -15,9 +15,24 @@
 3) 在 `contracts/` 为 SAP/MES/RCS/WCS/设备补全协议、字段、幂等/错误处理，标注供应商需提供的点表/模拟器。  
 4) 在 `diagrams/` 绘制关键路径（入库、发料、异常兜底）的流程与时序图，附引用。  
 5) 将容量/性能假设与验证方法放入 `validations/`，并与 SC/FR 对齐。  
+6) 供应商协作：在 contracts/integration-contracts.md 填写点表/接口/模拟器交付要求；在 validations/ 记录演练/仿真用例。
+
+## 术语与缩写 (Bilingual Glossary)
+- 调度中台 (Dispatching Platform)
+- WMS (Warehouse Management System)
+- RCS (Robot Control System)
+- WCS (Warehouse Control System)
+- AGV / E-AGV / CTU (Automated Guided Vehicle / Enhanced AGV / Container Transfer Unit)
+- PLC (Programmable Logic Controller)
+- 工控机 (Industrial PC, IPC)
+- Modbus / MQTT / SSE / WebSocket / HTTP
+- SAP / MES
+- IQC (Incoming Quality Control)
 
 ## 提交前检查
 - Constitution Check：调度中台、不做 PLC/IO；协议与供应商责任已记录。
 - Traceability：每个接口/字段/流程引用 docs/origin 与 SRS 段落。
 - 双语：关键术语保持中英对照。
 - 性能/容量：基线与验证方法明确（源于现网测算）。
+- SC 对齐：验证与 SC-001..SC-004 映射在 validations/assumptions.md。
+- 交付包：plan/research/data-model/contracts/diagrams/validations、playbooks 汇总用于评审。

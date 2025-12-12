@@ -6,15 +6,15 @@
 
 ## Phase 1: Setup (Shared Infrastructure)
 
-- [ ] T001 Create/verify design folders: specs/001-high-level-design/diagrams, specs/001-high-level-design/validations, specs/001-high-level-design/contracts (ensure present)
-- [ ] T002 Collect source references (docs/origin/*.xlsx/.docx/.pdf, docs/SRS.md) and note Sheet/Row/段落 mapping in plan.md
-- [ ] T003 Maintain bilingual glossary section in plan.md and quickstart.md for new terms
+- [X] T001 Create/verify design folders: specs/001-high-level-design/diagrams, specs/001-high-level-design/validations, specs/001-high-level-design/contracts (ensure present)
+- [X] T002 Collect source references (docs/origin/*.xlsx/.docx/.pdf, docs/SRS.md) and note Sheet/Row/段落 mapping in plan.md
+- [X] T003 Maintain bilingual glossary section in plan.md and quickstart.md for new terms
 
 ## Phase 2: Traceability & Inputs (Blocking)
 
-- [ ] T004 Map spec user stories and FRs to docs/origin citations in plan.md (file + Sheet/Row/段落)
-- [ ] T005 Gather vendor inputs: point tables/field lists, protocol (Modbus/MQTT/SSE/WebSocket/HTTP) details, simulators or recorded payloads; summarize in contracts/integration-contracts.md
-- [ ] T006 Capture initial capacity/performance assumptions and validation approach in validations/ (e.g., AGV 95%≤10s, ≥60 栈板/小时) with data sources from research.md
+- [X] T004 Map spec user stories and FRs to docs/origin citations in plan.md (file + Sheet/Row/段落)
+- [X] T005 Gather vendor inputs: point tables/field lists, protocol (Modbus/MQTT/SSE/WebSocket/HTTP) details, simulators or recorded payloads; summarize in contracts/integration-contracts.md
+- [X] T006 Capture initial capacity/performance assumptions and validation approach in validations/ (e.g., AGV 95%≤10s, ≥60 栈板/小时) with data sources from research.md
 
 ## Phase 3: User Story 1 - 构建端到端方案蓝图 (Priority: P1) 🎯 MVP
 
@@ -23,14 +23,14 @@
 
 ### Deliverables
 
-- [ ] T010 [P] [US1] Draft E2E流程与责任分界时序/流程图 (diagrams/) for inbound/storage/SMT supply
-- [ ] T011 [P] [US1] Update data-model.md with modules and their inputs/outputs/dependencies
-- [ ] T012 [US1] Add traceability annotations (docs/origin Sheet/Row/段落) to diagrams and plan.md summary
-- [ ] T013 [US1] Compile risk list for职责冲突/流程缺口与缓解措施 in plan.md
+- [X] T010 [P] [US1] Draft E2E流程与责任分界时序/流程图 (diagrams/) for inbound/storage/SMT supply
+- [X] T011 [P] [US1] Update data-model.md with modules and their inputs/outputs/dependencies
+- [X] T012 [US1] Add traceability annotations (docs/origin Sheet/Row/段落) to diagrams and plan.md summary
+- [X] T013 [US1] Compile risk list for职责冲突/流程缺口与缓解措施 in plan.md
 
 ### Validations for User Story 1 (OPTIONAL)
 
-- [ ] T014 [P] [US1] Traceability check: spec ↔ plan ↔ diagrams mapped to docs/origin
+- [X] T014 [P] [US1] Traceability check: spec ↔ plan ↔ diagrams mapped to docs/origin
 
 **Checkpoint**: US1 reviewed;模块/责任分界无冲突且可追溯。
 
@@ -41,15 +41,15 @@
 
 ### Deliverables
 
-- [ ] T020 [P] [US2] Expand contracts/integration-contracts.md with per-system payloads, keys, error codes, retries, QoS
-- [ ] T021 [P] [US2] Add sequence diagrams for key interactions (e.g., 收货→IQC→上架, 发料→补料→退料) to diagrams/
-- [ ] T022 [US2] Document vendor handover requirements (point tables, simulators, manual fallback) in contracts/ and quickstart.md
-- [ ] T023 [US2] Update data-model.md with contract-to-entity field mappings (IDs, reconciliation fields)
+- [X] T020 [P] [US2] Expand contracts/integration-contracts.md with per-system payloads, keys, error codes, retries, QoS
+- [X] T021 [P] [US2] Add sequence diagrams for key interactions (e.g., 收货→IQC→上架, 发料→补料→退料) to diagrams/
+- [X] T022 [US2] Document vendor handover requirements (point tables, simulators, manual fallback) in contracts/ and quickstart.md
+- [X] T023 [US2] Update data-model.md with contract-to-entity field mappings (IDs, reconciliation fields)
 
 ### Validations for User Story 2 (OPTIONAL)
 
-- [ ] T024 [P] [US2] Traceability check: contracts/diagrams to spec FR-003 and docs/origin
-- [ ] T025 [P] [US2] Scenario validation using sample payloads/simulators (if available) recorded in validations/
+- [X] T024 [P] [US2] Traceability check: contracts/diagrams to spec FR-003 and docs/origin
+- [X] T025 [P] [US2] Scenario validation using sample payloads/simulators (if available) recorded in validations/
 
 **Checkpoint**: US2 reviewed;接口矩阵可演示/走查且可追溯。
 
@@ -60,23 +60,26 @@
 
 ### Deliverables
 
-- [ ] T030 [P] [US3] Document capacity/performance assumptions and validation scripts/steps in validations/ (cite data sources)
-- [ ] T031 [P] [US3] Define observability signals and alert thresholds for key paths in validations/ (AGV tasks, interface latency)
-- [ ] T032 [P] [US3] Add fallback/rollback playbooks to integration/playbooks/ for top exceptions (设备离线、接口超时、库容超限)
-- [ ] T033 [US3] Update data-model.md with exception handling states/locks and link to contracts/ error codes
+- [X] T030 [P] [US3] Document capacity/performance assumptions and validation scripts/steps in validations/ (cite data sources)
+- [X] T031 [P] [US3] Define observability signals and alert thresholds for key paths in validations/ (AGV tasks, interface latency)
+- [X] T032 [P] [US3] Add fallback/rollback playbooks to integration/playbooks/ for top exceptions (设备离线、接口超时、库容超限)
+- [X] T033 [US3] Update data-model.md with exception handling states/locks and link to contracts/ error codes
 
 ### Validations for User Story 3 (OPTIONAL)
 
-- [ ] T034 [P] [US3] Traceability check: validations/playbooks to FR-005/FR-006/FR-009 and docs/origin
+- [X] T034 [P] [US3] Traceability check: validations/playbooks to FR-005/FR-006/FR-009 and docs/origin
 
 **Checkpoint**: US3 reviewed;容量/可观察性/兜底方案可用于演练。
 
 ## Phase N: Cross-Cutting & Polish
 
-- [ ] T100 [P] Consolidate glossary and bilingual annotations across plan.md, quickstart.md, contracts/
-- [ ] T101 [P] Ensure all artifacts include docs/origin traceability (Sheet/Row/段落) before sign-off
-- [ ] T102 [P] Align validations/ with SC metrics (SC-001..SC-004) and record evidence sources
-- [ ] T103 [P] Prepare review packet (plan/research/data-model/contracts/diagrams/validations) for stakeholder sign-off
+- [X] T100 [P] Consolidate glossary and bilingual annotations across plan.md, quickstart.md, contracts/
+- [X] T101 [P] Ensure all artifacts include docs/origin traceability (Sheet/Row/段落) before sign-off
+- [X] T102 [P] Align validations/ with SC metrics (SC-001..SC-004) and record evidence sources
+- [X] T103 [P] Prepare review packet (plan/research/data-model/contracts/diagrams/validations) for stakeholder sign-off
+- [X] T104 [P] Define security/compliance requirements in plan.md and contracts/ (data classification, audit retention, access control, encryption/auth alignment with SAP/MES/RCS/WCS/设备)
+- [X] T105 [P] Document environment topology (dev/联调/预生产/生产), network/ACL boundaries, and simulator/sandbox readiness criteria in plan.md
+- [X] T106 [P] Add security/compliance acceptance criteria and evidence plan to validations/assumptions.md (owner/ETA, log retention, auth/z, encryption)
 
 ## Dependencies & Execution Order
 
