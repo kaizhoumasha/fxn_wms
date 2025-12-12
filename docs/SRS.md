@@ -1812,6 +1812,23 @@ sequenceDiagram
        * **同架面相聚类**: 对于同一 Rack，先执行 Side A 所有任务，再 Rotate 执行 Side B (避免反复旋转)。
      * 生成最终任务队列: `Task_Group_1(R1_SideA)` -> `Task_Group_2(R1_SideB)` -> `Task_Group_3(R2)...`
 
+#### 3.8.5 冷热区存储优化策略 (Cold/Hot Zone Storage Strategy)
+
+- **定义**: 基于物料访问频率 (Frequency) 的动态储位优化机制，而非物理温度控制。
+- **目的**: 将高频访问 (Hot) 的货架/料箱移动至靠近作业口或主通道的区域，降低 AGV 搬运距离与时间。
+- **逻辑**:
+  1. **区域划分**: RCS/WMS 将存储区划分为不同优先级的 **冷热区 (Zones)** (e.g., Zone A=Hot, Zone B=Normal, Zone C=Cold).
+  2. **热度计算**: 系统每日统计每个货架/料箱的 **访问频次 (Hit Count)** (e.g., 过去 7 天的出入库次数).
+  3. **定时调整 (Daily Job)**:
+     * **时间**: 每日闲时 (e.g., 08:00 AM) 执行 `J_AGV_Shelf_TransferArea_AutoSync`.
+     * **动作**:
+       * 识别 "Hot Shelf in Cold Zone" -> 生成移库任务 -> Move to Zone A.
+       * 识别 "Cold Shelf in Hot Zone" -> 生成移库任务 -> Move to Zone C.
+  4. **配置参数**:
+     * `aare_priority`: 区域优先级 (9=Highest/Hot, 1=Lowest/Cold).
+     * `aare_lock_loc_count`: 区域预留空位数 (防止死锁).
+     * `ashl_transferable`: 货架是否允许参与冷热调整.
+
 ---
 
 ### 4.1 用户界面 (User Interfaces)
@@ -1856,13 +1873,21 @@ sequenceDiagram
 #### 4.3.2 机器人调度系统接口 (RCS Interface)
 
 * **定位**: WMS 为上层指令方，RCS 为下层执行方。
-* **协议**: HTTP REST API (指令类) + MQ/Callback (状态推送类)。
-* **关键指令**:
+* **通信机制 (Communication Mechanism)**:
+  * **指令交互**: HTTP REST API (用于实时任务下发 `Move`, `Lift` 等).
+  * **单据同步 (Document Sync)**: 采用 **中间表 + 定时作业** 模式进行批量单据握手 (参考 NVD 流程):
+    * **Job**: `J_AGV_Warehouse_StockIn_Sync_WMS` (入库同步), `J_AGV_Warehouse_StockOut_Sync_WMS` (出库同步).
+    * **Work Codes**:
+      * `100`: 原料入库 (Raw Material Inbound).
+      * `101`: 来料入库 (Inbound Delivery).
+      * `102`: 工单退料 (Order Return).
+      * `201`: 工单发料 (Order Issue).
+* **关键指令 (Key Commands)**:
   * `Move(Source, Target, Type)`: 搬运任务 (点到点)。
   * `Rotate(Location, Angle)`: 货架原地旋转 (用于调整面相)。
   * `Lift/Drop(Location)`: 顶升或放下货架。
   * `Exchange(SourceBin, TargetBin)`: CTU 料箱交换指令。
-* **状态反馈**:
+* **状态反馈 (Status Feedback)**:
   * `TaskStatus`: Accepted -> Started -> Arrived -> Completed.
   * `Exception`: PathBlocked (路径阻塞), DeviceError (设备故障).
   * `ResourceState`: AGV 电量、位置、在线状态。
