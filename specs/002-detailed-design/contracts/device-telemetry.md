@@ -2,6 +2,7 @@
 
 **Protocol**: MQTT 或 SSE（供应商可择一提供）  
 **Auth**: 按通道配置（TLS + Token/Client Cert）  
+**Security**: 传输需 TLS，敏感字段可脱敏日志，所有告警需审计留痕。  
 **Idempotency**: 由 `eventId` + `containerId` + `occurredAt` 防重  
 **TraceRef**: docs/origin 行号需在实现时补充
 

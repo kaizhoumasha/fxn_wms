@@ -3,7 +3,7 @@
 **Protocol**: HTTP/REST  
 **Auth**: Token/Bearer，TLS  
 **Idempotency**: `IdempotencyKey = TaskId + OrderNo`  
-**TraceRef**: docs/origin 行号需在实现时补充
+**TraceRef**: docs/origin/... （待补行号）
 
 ## 收货数据同步（Request_GRN / Return_GRN_List）
 
@@ -25,7 +25,7 @@
   "code": "OK",
   "message": "success",
   "grnList": [
-    { "po": "PO123", "lineItem": "10", "material": "MAT-9001", "batch": "B001", "qty": 120, "vendor": "V001" }
+    { "po": "PO123", "lineItem": "10", "material": "MAT-9001", "batch": "B001", "qty": 120, "uom": "pcs", "vendor": "V001" }
   ]
 }
 ```
@@ -65,7 +65,7 @@ curl -X POST https://wms.example.com/api/v1/sap/grn/query \
 | containerId | string | Y | - | 托盘/周转箱 ID |
 | skuCode | string | Y | - | 物料编码 |
 | qty | number | Y | pcs | 数量 |
-| uom | string | Y | - | 计量单位 |
+| uom | string | Y | - | 计量单位（pcs/kg/box） |
 | warehouse | string | Y | - | 仓库代码 |
 | fromLocation | string | N | - | 来源位 |
 | toLocation | string | N | - | 目的位 |

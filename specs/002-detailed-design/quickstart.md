@@ -9,7 +9,7 @@
 3) 查 `research.md`（决策与备选）。  
 4) 查 `data-model.md`（实体/字段/幂等/对账键）。  
 5) 对应接口查看 `contracts/` 下具体文档与样例。  
-6) 若有观测或性能需求，查 `validations/`（后续补充）。
+6) 若有观测或性能需求，查 `validations/observability.md`；异常/兜底见 `validations/exception-handling.md`；安全与审计见 `validations/security.md`；假设/风险见 `validations/assumptions.md`。
 
 ## Traceability（可追溯性）
 - 所有字段/流程/接口需标注 `TraceRef` 指向 `docs/origin` 的表/行。  

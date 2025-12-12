@@ -3,7 +3,7 @@
 **Protocol**: HTTP/REST  
 **Auth**: Token/Bearer，TLS  
 **Base Path**: `https://<rcs-host>/rcms/services/rest/hikRpcService/`（遵循 `docs/origin/AGV API SPEC_20220902(V2).xlsx` + `docs/origin/灿态WMS与RCS已对接清单(20250717).docx`）  
-**TraceRef**: 请在实现时补充对应行号
+**TraceRef**: docs/origin/... （待补行号）
 
 ## 下发搬运任务 genAgvSchedulingTask（Dispatch）
 
@@ -20,13 +20,13 @@
 | wbCode | string | N | 工位/工控位编码 |
 | positionCodePath | array | Y | 位置列表，每项包含 `positionCode`、`type`（00/03 等） |
 | podCode | string | Y | 货架/Pod 编号 |
-| podDir | string | Y | 货架方向（0/180 等） |
+| podDir | string | Y | 货架方向（0/180 等，deg） |
 | podTyp | string | N | 货架类型 |
 | materialLot | string | N | 料批 |
 | priority | string | N | 优先级，数字越小越高 |
 | data | string | Y | 业务标识，例如 `WMS_SHELF_MOVE_TASK` |
 | reqCode | string | Y | 请求唯一标识（幂等/对账键之一） |
-| reqTime | datetime | Y | 请求时间 |
+| reqTime | datetime | Y | 请求时间 (UTC) |
 | clientCode | string | Y | 调用方标识（例：MES-1-1） |
 | tokenCode | string | N | 令牌 |
 
@@ -34,6 +34,16 @@
 ```json
 { "code": "0", "message": "成功", "reqCode": "d045749bb47c4dc1acad3a0a856979ac", "data": "3E94305EB994406A9405EDA53A76C762" }
 ```
+
+- **Error Codes**
+| code | retryable | description |
+|------|-----------|-------------|
+| DUPLICATE | false | 幂等重复，返回已有任务 |
+| INVALID_FIELD | false | 字段缺失/非法 |
+| NO_CAPACITY | true | 暂无可用车辆/路线 |
+| LOCK_CONFLICT | true | 位置/库存锁冲突 |
+| RCS_DOWN | true | RCS 不可用，需退避重试 |
+| TIMEOUT | true | 未响应或超时，可重试或人工介入 |
 
 - **调用示例（Dispatch Example，源自对接清单）**
 ```bash

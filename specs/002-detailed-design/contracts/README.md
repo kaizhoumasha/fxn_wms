@@ -13,4 +13,14 @@
 ## 契约清单 (Artifacts)
 - `sap-inbound.md`: SAP ↔ WMS 入库/出库单同步与回执。  
 - `rcs-command.md`: WMS → RCS/AGV 行走/搬运指令，下发与确认。  
-- `device-telemetry.md`: WCS/设备状态/告警回传（MQTT/SSE）。
+- `device-telemetry.md`: WCS/设备状态/告警回传（MQTT/SSE）。  
+- `mes-orders.md`: MES 工单拉取与投料反馈。  
+- `wcs-control.md`: WMS → WCS 启停/模式切换与线体任务下发。
+
+## 样例缺口与来源 (Samples)
+- 若供应商未提供样例 payload，需在各文件注明缺口与 ETA，并在此汇总：  
+  - MES 样例：待 MES 提供（ETA：待定）  
+  - WCS 样例：待供应商提供线体启停/任务样例（ETA：待定）
+
+## TraceRef
+- 所有接口需补 `TraceRef: docs/origin/...` 行级引用占位，并在实现时填充。

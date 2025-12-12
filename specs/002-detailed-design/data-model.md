@@ -41,6 +41,11 @@
 - `SLOTarget`: p95 ≤10s（命令链路），其他按流程定义  
 - `CollectionMethod`: 拉取/推送、采样率、窗口
 
+### Identifier & Units 一致性
+- 标识键：TaskId、OrderNo、ContainerId、AGVJobId、PositionCode、IdempotencyKey。所有接口/日志必须统一命名与含义。  
+- 单位枚举：时间 ms/s、数量 pcs、质量 kg、长度 mm、角度 deg。  
+- 枚举示例：任务状态 accepted/in_progress/completed/failed/exception；设备事件 completed/failed/alarm/heartbeat。
+
 ### RiskAssumption（风险与假设）
 - `RiskId`、`Description`、`Likelihood`、`Impact`  
 - `Owner`、`Mitigation`、`ETA`  
