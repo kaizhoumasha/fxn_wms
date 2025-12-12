@@ -21,6 +21,17 @@
 - 若供应商未提供样例 payload，需在各文件注明缺口与 ETA，并在此汇总：  
   - MES 样例：待 MES 提供（ETA：待定）  
   - WCS 样例：待供应商提供线体启停/任务样例（ETA：待定）
+  - 设备事件样例：拆包/检测/LCR/X-Ray 告警与失败事件，待供应商提供（ETA：待定）
 
 ## TraceRef
 - 所有接口需补 `TraceRef: docs/origin/...` 行级引用占位，并在实现时填充。
+
+## 错误码/重试/幂等矩阵（摘要）
+
+| 系统 | 幂等键 | 标准错误码 | 重试策略 |
+|------|--------|------------|----------|
+| SAP | requestId / idempotencyKey | INVALID_FIELD / SAP_DOWNSTREAM / NO_DATA | 指数退避≤3，SAP_DOWNSTREAM 可重试 |
+| MES | requestId | DUPLICATE / INVALID_ORDER / MES_DOWN | MES_DOWN 可重试；其他失败不重试 |
+| RCS | reqCode | DUPLICATE / INVALID_FIELD / NO_CAPACITY / LOCK_CONFLICT / RCS_DOWN / TIMEOUT | 指数退避≤3，超出转人工或改派 |
+| WCS | requestId | DUPLICATE / INVALID_FIELD / LINE_BUSY / WCS_DOWN | 指数退避≤3，LINE_BUSY 可重试 |
+| 设备事件 | eventId+containerId+occurredAt | 解析失败/缺字段→4xx，供应商补发 | 供应商侧≤3 次，本端告警 |

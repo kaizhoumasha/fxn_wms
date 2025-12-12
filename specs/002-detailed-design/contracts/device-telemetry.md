@@ -15,6 +15,7 @@
 | AutoUnpack/拆包机 | MQTT/SSE | 拆包结果、扫码/称重校验、异常 |
 | Vision/LCR/X-Ray | MQTT/SSE | 检测结果、Fail 原因、样本 ID |
 | Print/Labeler | MQTT/SSE | 打印成功/失败、标签校验 |
+| Other (扩展) | MQTT/SSE | 按设备类型扩展，沿用 eventType/Idempotency 约定 |
 
 ## MQTT 主题与负载
 
