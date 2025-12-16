@@ -285,6 +285,7 @@ P9 智能仓库使用三种货架类型，各有不同的物理结构和业务�
 
 * **架构定位**: WES 采用 **纯代理模式 (Pure Proxy Mode)**。WES **不维护库存主数据**，所有涉及库存的查询、预留、扣减操作均 **实时透传 (Passthrough)** 给现有 WMS。为优化性能，WES 允许对查询结果进行 **短时缓存 (TTL ≤ 30秒)**，但缓存失效后必须重新查询 WMS。
 * **职责划分 (Responsibility Division)**:
+
   * **现有 WMS (Existing WMS)**:
     * **库存主数据 (Inventory Master)**: 唯一的库存真实源。
     * **决策中心**: 负责库存可用性判断、分配逻辑和账务更新。
@@ -292,8 +293,8 @@ P9 智能仓库使用三种货架类型，各有不同的物理结构和业务�
     * **执行管道 (Execution Pipeline)**: 专注于任务的物理执行（搬运、抓取）。
     * **状态中继**: 将设备的物理状态实时反馈给 WMS，由 WMS 决定下一步逻辑。
     * **异常熔断**: 一旦 WMS 接口超时或报错，WES 立即暂停相关作业。
-
 * **执行状态数据结构 (Execution State Schema)**:
+
   ```
   Execution_State {
     TaskID: String,
@@ -308,16 +309,18 @@ P9 智能仓库使用三种货架类型，各有不同的物理结构和业务�
     Expected_Completion: Timestamp
   }
   ```
-  * **关键特征**: 这是 **瞬态数据 (Transient Data)**，任务完成后即清除，不长期保存。
 
+  * **关键特征**: 这是 **瞬态数据 (Transient Data)**，任务完成后即清除，不长期保存。
 * **与现有 WMS 的协同机制 (Coordination with Existing WMS)**:
 
   **1. 库存查询 (Inventory Query)**
+
   * **场景**: WES 需要决策时 (如: 分配发料任务)，查询现有 WMS 的库存。
   * **接口**: `GET /api/wms/inventory?material=R001&location=SMT-A-01`
   * **缓存策略**: WES 可对查询结果进行短时缓存 (TTL ≤ 30秒)，减少 API 调用频率，但不改变"WMS 为库存主数据源"的架构定位。
 
   **2. 库存预留 (Inventory Reservation)**
+
   * **场景**: WES 生成发料任务前，向现有 WMS 申请预留库存。
   * **接口**: `POST /api/wms/inventory/reserve`
   * **请求**:
@@ -337,6 +340,7 @@ P9 智能仓库使用三种货架类型，各有不同的物理结构和业务�
     * **异常恢复**: WES 重启后，查询所有预留记录，释放已过期或已完成的预留。
 
   **3. 库存确认 (Inventory Confirmation)**
+
   * **场景**: 物理动作完成后 (如: 装箱完成、发料完成)，WES 通知现有 WMS 更新库存。
   * **入库确认**: `POST /api/wms/inventory/putaway`
     ```json
@@ -362,6 +366,7 @@ P9 智能仓库使用三种货架类型，各有不同的物理结构和业务�
   * **幂等性保障**: 所有确认接口支持重复调用 (基于 `TaskID` 去重)。
 
   **4. 异常处理 (Exception Handling)**
+
   * **场景**: 物理动作失败 (如: AGV 故障、装箱失败)。
   * **流程**:
     1. WES 标记任务失败: `Task_Status = Failed`。
@@ -376,11 +381,12 @@ P9 智能仓库使用三种货架类型，各有不同的物理结构和业务�
   **1. 装箱分配策略 (Binning Strategy)**
 
   * **料箱规格定义**:
+
     * **A 型料箱**: 6 个 7 寸料盘储位，每个储位仅可存放 7 寸料盘。
     * **B 型料箱**: 2 个 7 寸料盘储位 + 1 个大尺寸储位 (可存 13/15 寸料盘)。
     * **储位堆叠**: 每个储位可堆叠多个料盘，堆叠数量 = `储位可用深度 / 料盘厚度`。
-
   * **分配算法 (Allocation Algorithm)**:
+
     ```
     IF (料盘尺寸 == 7寸) THEN
       优先查找: 已有 A 型或 B 型料箱中，存有相同 Material+Vendor+DC 的 7 寸储位
@@ -401,22 +407,24 @@ P9 智能仓库使用三种货架类型，各有不同的物理结构和业务�
       END IF
     END IF
     ```
-
   * **容量计算 (Capacity Calculation)**:
+
     * **储位剩余容量** = `储位深度 - Sum(已存料盘厚度)`
     * **可放入判断** = `剩余容量 >= 当前料盘厚度`
     * **实时更新**: 每次放入后，WES 更新储位的 `Used_Depth` 和 `Remaining_Capacity`。
-
   * **防错机制 (Error Prevention)**:
+
     * **尺寸校验**: 7 寸料盘不得放入大尺寸储位，13/15 寸料盘不得放入 7 寸储位。
     * **混料禁止**: 同一储位内，`Material + Vendor + DC` 必须一致。
 
   **2. 发料优先级策略 (Issue Priority Strategy)**
+
   * **FEFO (First Expire First Out)**: 优先发 DC 日期最早的物料。
   * **退料优先**: 退料货架 > 正常库存。
   * **余料优先**: 栈板/货架容量 < 30% 的优先发出 (减少碎片化)。
 
   **3. 冷热区存储优化策略 (Hot/Cold Zone Optimization)**
+
   * **热区定义**: 近 7 天出库频次 > 10 次的物料 -> 分配到 **靠近产线的货架 (Hot Zone)**。
     * **五层货架**: 优先分配至 **A 面** (靠近产线侧)，减少 CTU 搬运距离。
   * **冷区定义**: 近 30 天无出库记录 -> 分配到 **远端货架 (Cold Zone)**。
@@ -485,6 +493,7 @@ P9 智能仓库使用三种货架类型，各有不同的物理结构和业务�
 * **WES 协调职责**:
 
   **1. AB 栈板成对协同 (Paired Pallet Coordination)**
+
   * **配对逻辑**: WES 根据工单识别 `Top_Cover_Material` 和 `Bottom_Cover_Material`。
   * **同步调度**:
     * WES 生成 `Transport_Task_Pair(Pallet_A, Pallet_B)`。
@@ -492,6 +501,7 @@ P9 智能仓库使用三种货架类型，各有不同的物理结构和业务�
   * **缺料处理**: 若只有 A 无 B -> WES 挂起任务，触发 `Shortage_Alert`。
 
   **2. 拆包与追溯 (Unpacking & Traceability)**
+
   * **围膜拆除**:
     * WES 生成 `Transport_Task(To Unwrap_Zone)`。
     * 人工拆围膜后，PDA 呼叫 RCS -> WES 生成 `Transport_Task(To Unpack_Line)`。
@@ -504,11 +514,13 @@ P9 智能仓库使用三种货架类型，各有不同的物理结构和业务�
     * WES 推送追溯数据至 SFC (Shop Floor Control)。
 
   **3. Magazine 调度与产线上料 (Magazine Dispatch)**
+
   * **装满触发**: ECS 上报 `Magazine_Full` -> WES 生成 `Transport_Task(To Production_Buffer)`。
   * **空 Magazine 回流**: RCS 自主调度空 Magazine 回自动线 (WES 不干预)。
   * **产线需求驱动**: WES 接收 SFC 的 `Magazine_Request` -> 调度 RCS 从 Buffer 送产线。
 
   **4. 空栈板回收 (Empty Pallet Return)**
+
   * **触发条件**: ECS 扫描栈板，确认 `IsEmpty = True`。
   * **回收流程**:
     * `ECS -> WES: Pallet_Empty(PalletID)`。
@@ -557,6 +569,7 @@ P9 智能仓库使用三种货架类型，各有不同的物理结构和业务�
 * **WES 控制逻辑**:
 
   **Step 1: 清点决策 (Counting Decision)**
+
   ```
   IF (Qty_Returned == Qty_Issued AND Usage == 0) THEN
     Skip_XRay_Count  // 满盘
@@ -567,10 +580,12 @@ P9 智能仓库使用三种货架类型，各有不同的物理结构和业务�
   ```
 
   **Step 2: X-Ray 清点执行 (X-Ray Execution)**
+
   * **流程**: ECS 扫描 PKG -> 流入 X-Ray 设备 -> 清点。
   * **数据流**: `ECS -> WES: XRay_Result(Original_PKG, Actual_Count)`。
 
   **Step 3: 新标签生成 (New Label Generation)**
+
   * **WES 算法**:
     ```
     New_PKG = Generate_PKG(
@@ -589,6 +604,7 @@ P9 智能仓库使用三种货架类型，各有不同的物理结构和业务�
     * **贴标要求**: 新标签覆盖旧标签，但保留旧料号可见。
 
   **Step 4: 分类上架 (Classification & Putaway)**
+
   * **WES 路由算法**:
     ```
     IF (Material.IsMSD == True) THEN
@@ -639,6 +655,7 @@ P9 智能仓库使用三种货架类型，各有不同的物理结构和业务�
 * **WES 降级策略**:
 
   **1. 自动线 -> PDA 模式 (Auto to Manual)**
+
   * **切换流程**:
     * 管理员在 WES 界面点击 "切换人工模式"。
     * WES 挂起所有自动任务 -> 生成 `Manual_Task_List`。
@@ -647,6 +664,7 @@ P9 智能仓库使用三种货架类型，各有不同的物理结构和业务�
     * 人工扫描确认 -> WES 更新库存，逻辑与自动线完全一致。
 
   **2. 数据一致性保障 (Data Consistency)**
+
   * **关键原则**: 无论自动/人工，所有操作必须实时通过 WMS 接口校验。
   * **校验机制**: PDA 提交数据时，WES 将请求透传给 WMS，由 WMS 返回允许/拒绝指令。WES 不做本地逻辑校验。
 
@@ -656,6 +674,7 @@ P9 智能仓库使用三种货架类型，各有不同的物理结构和业务�
 * **WES 处理流程**:
 
   **1. 自动重试 (Auto Retry)**
+
   ```
   FOR i = 1 TO 3 DO
     Send_Command(ECS, Command)
@@ -669,6 +688,7 @@ P9 智能仓库使用三种货架类型，各有不同的物理结构和业务�
   ```
 
   **2. 失败处理 (Failure Handling)**
+
   * **3 次重试失败** -> WES 执行:
     1. 标记设备状态: `Device_Status = Offline`。
     2. 挂起相关任务: `Task_Status = Suspended`。
@@ -676,10 +696,12 @@ P9 智能仓库使用三种货架类型，各有不同的物理结构和业务�
     4. 通知运维: 发送邮件/短信/钉钉消息。
 
   **3. 设备恢复 (Device Recovery)**
+
   * ECS/RCS 恢复在线 -> WES 自动检测 (心跳机制)。
   * WES 执行 `Health_Check(DeviceID)` -> 若通过，自动恢复挂起任务。
 
   **4. 上游 WMS 断连处理 (WMS Disconnection Handling)**
+
   * **熔断机制**: 若连续 3 次调用 WMS 接口超时或返回 5xx 错误，触发断网保护。
   * **暂停策略**:
     * **立即暂停**: 所有涉及库存变动的业务任务 (收货、发料、装箱、入库确认、出库确认等)
@@ -721,18 +743,19 @@ P9 智能仓库使用三种货架类型，各有不同的物理结构和业务�
 #### 3.8.1 系统定位与职责划分 (System Positioning & Responsibility)
 
 * **现有 WMS (Existing WMS - 主系统)**:
+
   * **库存主数据**: 唯一的库存真实源 (Single Source of Truth)，管理 P9 工厂所有库存。
   * **业务单据**: 收货单、出库单、调拨单、盘点单等业务凭证。
   * **账务管理**: 库存账务、成本核算、财务对接。
   * **全局视图**: 提供全工厂的库存查询和报表。
-
 * **P9 WES (This System - 增强层)**:
+
   * **执行协调**: 协调自动化区域的 RCS/ECS 设备完成物理动作。
   * **状态追踪**: 追踪物料在自动化设备中的实时位置和状态 (瞬态数据)。
   * **策略引擎**: 运行装箱策略、发料优先级、路由算法等智能决策。
   * **设备控制**: 直接调度 SMT 区、机构件区、退料区等自动化设备。
-
 * **协同原则 (Coordination Principles)**:
+
   * **查询驱动 (Query-Driven)**: WES 需要库存数据时，实时查询现有 WMS。
   * **确认驱动 (Confirmation-Driven)**: WES 完成物理动作后，通知现有 WMS 更新库存。
   * **预留机制 (Reservation)**: WES 通过预留接口锁定库存，避免超发。
@@ -742,6 +765,7 @@ P9 智能仓库使用三种货架类型，各有不同的物理结构和业务�
 * **现有 WMS 需提供的接口 (APIs Required from Existing WMS)**:
 
   **1. 库存查询接口 (Inventory Query)**
+
   ```
   GET /api/wms/inventory/query
   Query Params: material_id, location, zone
@@ -749,6 +773,7 @@ P9 智能仓库使用三种货架类型，各有不同的物理结构和业务�
   ```
 
   **2. 库存预留接口 (Inventory Reservation)**
+
   ```
   POST /api/wms/inventory/reserve
   Body: { material_id, qty, work_order, reserved_by, expire_time }
@@ -759,6 +784,7 @@ P9 智能仓库使用三种货架类型，各有不同的物理结构和业务�
   ```
 
   **3. 入库确认接口 (Putaway Confirmation)**
+
   ```
   POST /api/wms/inventory/putaway
   Body: { grn, material_id, qty, location, pkg_code, timestamp }
@@ -766,15 +792,16 @@ P9 智能仓库使用三种货架类型，各有不同的物理结构和业务�
   ```
 
   **4. 出库确认接口 (Issue Confirmation)**
+
   ```
   POST /api/wms/inventory/issue
   Body: { reservation_id, material_id, qty, work_order, timestamp }
   Response: { status, transaction_id }
   ```
-
 * **P9 WES 提供的接口 (APIs Provided by P9 WES)**:
 
   **1. 执行状态查询 (Execution State Query)**
+
   ```
   GET /api/wes/execution/status
   Query Params: task_id, material_id, work_order
@@ -782,6 +809,7 @@ P9 智能仓库使用三种货架类型，各有不同的物理结构和业务�
   ```
 
   **2. 任务下发接口 (Task Dispatch)**
+
   ```
   POST /api/wes/tasks/dispatch
   Body: { task_type, material_id, qty, source, target, priority }
@@ -791,18 +819,19 @@ P9 智能仓库使用三种货架类型，各有不同的物理结构和业务�
 #### 3.8.3 数据一致性保障 (Data Consistency Guarantee)
 
 * **幂等性设计 (Idempotency)**:
+
   * 所有确认接口 (putaway/issue) 基于 `TaskID` 去重，支持重复调用。
   * **幂等性规则**:
     * **相同 TaskID + 相同数据**: 返回成功，不重复执行，返回首次执行结果。
     * **相同 TaskID + 不同数据**: 返回错误 (409 Conflict)，拒绝执行，提示数据不一致。
     * **不同 TaskID**: 正常执行新任务。
   * 避免网络重试导致的重复入库/出库。
-
 * **事务补偿 (Transaction Compensation)**:
+
   * 若 WES 物理动作失败 -> 释放预留 -> 记录异常日志。
   * 若 WMS 确认接口失败 -> WES 重试 3 次 -> 失败后触发人工介入。
-
 * **对账机制 (Reconciliation)**:
+
   * 每日凌晨 2:00，WES 与现有 WMS 进行库存对账。
   * 对比 WES 的执行记录与 WMS 的库存变动，识别差异。
   * 差异超过阈值 -> 触发告警，人工核查。
