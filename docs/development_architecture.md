@@ -2,7 +2,7 @@
 
 ## 1. 核心设计理念 (Design Philosophy)
 
-本架构基于 `@docs/system_architecture.md` 和 `@docs/technology_stack_analysis.md`，旨在构建一个高可用、低延迟且易于扩展的控制中台。
+本架构基于 `@docs/system_architecture.md` 和 `@docs/technology_stack_decision_pack.md`，旨在构建一个高可用、低延迟且易于扩展的控制中台。
 
 1.  **模块化单体 (Modular Monolith)**:
     *   鉴于系统需“独立部署”且各模块交互紧密，采用单体仓库（Monorepo）开发。
@@ -90,7 +90,9 @@ class RcsAdapter(IHardwareAdapter):
 
 ### 3.3 数据层：CQRS 与 读写分离
 *   **Command (Write)**: 业务操作（如下发任务）写入 PostgreSQL。
-*   **Query (Read)**: 实时大屏或高频查询优先读取 Redis 缓存（实时库存镜像）。
+*   **Query (Read)**:
+    *   **执行状态查询**: 实时大屏或高频查询优先读取 Redis 缓存（任务状态、设备状态等瞬态数据）。
+    *   **库存查询**: 不维护本地库存镜像，实时透传至 WMS，可短时缓存查询结果 (TTL ≤ 30s)。
 *   **TimescaleDB**: 硬件日志异步批量写入，避免阻塞主业务事务。
 
 ### 3.4 异步任务编排

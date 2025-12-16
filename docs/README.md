@@ -26,7 +26,7 @@
 
 | 文档 | 说明 | 适用人群 |
 |------|------|----------|
-| [technology_stack_analysis.md](./technology_stack_analysis.md) | **技术栈分析**<br/>框架选型、依赖库、工具链 | 技术负责人、架构师 |
+| [technology_stack_decision_pack.md](./technology_stack_decision_pack.md) | **技术栈决策包（合并版）**<br/>合并分析观点 + 领导可选结论（统一口径） | 管理层、技术负责人、架构师 |
 | [third_party_integration_whitepaper.md](./third_party_integration_whitepaper.md) | **第三方集成白皮书**<br/>外部系统集成方案 (WMS/SAP/RCS/ECS/PDA) | 集成开发人员、接口对接人员 |
 | [project_function_list_and_acceptance_criteria.md](./project_function_list_and_acceptance_criteria.md) | **功能清单与验收标准**<br/>功能模块与验收条件 | 测试人员、项目经理 |
 
@@ -49,7 +49,7 @@
 ### 架构师 (Architect)
 1. [system_architecture.md](./system_architecture.md) - 系统架构设计
 2. [development_architecture.md](./development_architecture.md) - 开发架构
-3. [technology_stack_analysis.md](./technology_stack_analysis.md) - 技术选型
+3. [technology_stack_decision_pack.md](./technology_stack_decision_pack.md) - 技术选型（统一口径）
 4. [hardware_interface_standard.md](./hardware_interface_standard.md) - 硬件接口规范
 
 ### 开发人员 (Developer)
@@ -93,7 +93,7 @@
 
 ### 性能与可靠性 (Performance & Reliability)
 - [SRS.md](./SRS.md) 第 4 节 - 非功能性需求
-- [technology_stack_analysis.md](./technology_stack_analysis.md) - 技术选型依据
+- [technology_stack_decision_pack.md](./technology_stack_decision_pack.md) - 技术选型依据（统一口径）
 
 ---
 
@@ -129,7 +129,7 @@
    ↓
 2. development_architecture.md (开发架构)
    ↓
-3. technology_stack_analysis.md (技术选型)
+3. technology_stack_decision_pack.md (技术选型，统一口径)
    ↓
 4. hardware_interface_standard.md (接口设计)
    ↓

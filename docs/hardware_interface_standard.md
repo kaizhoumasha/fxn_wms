@@ -71,6 +71,8 @@ class IHardwareAdapter(ABC):
 
 ### 2.2 命令封装格式
 
+**注意**: 以下为 WES 内部通用格式。ECS 设备使用白皮书定义的格式（`task_type` 和 `params` 字段），详见第 3.2 节。
+
 ```json
 {
   "command_id": "uuid",

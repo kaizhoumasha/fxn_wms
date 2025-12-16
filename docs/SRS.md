@@ -24,7 +24,7 @@
 * **标准化接口**: 提供标准 RESTful API 供上层系统调用，提供标准 Protocol Adapter 对接下层硬件。
 * **核心域**:
   * **入库执行**: 码头收货、IQC 路由、上架策略执行。
-  * **库存快照**: 维护一套独立的、亚秒级更新的 **实时库存镜像 (Real-time Inventory Mirror)**，用于设备调度决策。
+  * **库存代理**: 采用 **按需动态查询 (On-Demand Query)** 模式，实时调用 WMS 接口获取库存数据，不维护本地库存副本。
   * **出库协同**: SMT 滚筒波次计算、自动线发料协调。
 
 ### 1.3 定义、首字母缩写和缩写 (Definitions)
@@ -64,7 +64,10 @@
 
 1. **独立部署能力 (Independent Deployment)**:
    * 系统包含完整的前后端、数据库及中间件 (Dockerized)。
-   * **最小化外部依赖**: 即使与 SAP/Legacy WMS 断网，本系统仍可在局域网内指挥设备完成已下发的任务，并缓存数据待网络恢复后回传。
+   * **网络依赖性**: 系统作业强依赖于上游 WMS 的在线状态。若与 SAP/Legacy WMS 断网，系统将执行以下策略:
+     * **立即暂停**: 所有涉及库存变动的业务任务 (收货、发料、装箱等)
+     * **允许继续**: 纯物理搬运任务 (AGV 回充电桩、空箱回流、设备空闲调度等)
+     * **自动恢复**: 网络恢复后，自动继续执行被暂停的任务，无需人工干预
 2. **API 驱动架构 (API-Driven)**:
    * **API First**: 所有功能（包括前端 UI）均通过 RESTful/gRPC API 访问。
    * **标准化数据接口**: 定义通用的 `Order_Ingest` (单据接入) 和 `Task_Dispatch` (任务下发) 接口，屏蔽不同 ERP 或不同硬件厂商的差异。
@@ -176,7 +179,7 @@ P9 智能仓库使用三种货架类型，各有不同的物理结构和业务�
 * **流程概述**: 暂存区 -> IQC 待检 -> 检验/复判 -> 路由分发。
 * **WES 核心功能**:
   1. **抽检策略 (Sampling Logic)**:
-     * WES 推送 `(Material, Vendor, Qty)` 至 QMS。
+     * WES 调用 QMS 接口查询抽检策略: `POST /api/qms/sampling/query`，传入 `(Material, Vendor, Qty)`。
      * QMS 返回抽检量；若 `SamplingQty > 0`，WES 生成 `Route_Task` (To IQC_Area)。
   2. **取样与归还 (Traceability)**:
      * 记录 IQC 取样动作: `WES_Log(PalletID, PKG_Code, Sample_Action)`.
@@ -242,7 +245,8 @@ P9 智能仓库使用三种货架类型，各有不同的物理结构和业务�
   1. **模式判断 (Mode Decision)**:
 
      * **满箱交换 (Full Exchange)**: 若料箱 `Usage >= 80%` 且 存储区有空箱资源 -> WES 生成 **交换任务**。
-     * **零散入库 (Pipeline Picking)**: 若料箱未满 -> WES 生成 **拣选任务**。
+     * **优先交换 (Priority Exchange)**: 若 `50% <= Usage < 80%` 且 存储区有空箱资源 -> 优先尝试交换，若无空箱则执行拣选。
+     * **零散入库 (Pipeline Picking)**: 若料箱 `Usage < 50%` 或 无空箱资源 -> WES 生成 **拣选任务**。
      * **混合模式**: 先交换，后拣选。
   2. **满箱交换执行 (Full Exchange Execution)**:
 
@@ -279,16 +283,15 @@ P9 智能仓库使用三种货架类型，各有不同的物理结构和业务�
 
 #### 3.4.1 执行状态追踪与库存协同 (Execution State Tracking & Inventory Coordination)
 
-* **架构定位**: WES **不维护库存副本**，而是维护 **执行中的瞬态状态 (In-flight Transient State)**，库存主数据仍由现有 WMS 管理。
+* **架构定位**: WES 采用 **纯代理模式 (Pure Proxy Mode)**。WES **不维护库存主数据**，所有涉及库存的查询、预留、扣减操作均 **实时透传 (Passthrough)** 给现有 WMS。为优化性能，WES 允许对查询结果进行 **短时缓存 (TTL ≤ 30秒)**，但缓存失效后必须重新查询 WMS。
 * **职责划分 (Responsibility Division)**:
   * **现有 WMS (Existing WMS)**:
-    * **库存主数据 (Inventory Master)**: 唯一的库存真实源 (Single Source of Truth)。
-    * **账务管理**: 入库单、出库单、库存调整的财务记录。
-    * **全局查询**: 提供库存查询 API 供 P9 WES 调用。
+    * **库存主数据 (Inventory Master)**: 唯一的库存真实源。
+    * **决策中心**: 负责库存可用性判断、分配逻辑和账务更新。
   * **P9 WES (This System)**:
-    * **执行状态 (Execution State)**: 追踪物料在自动化设备中的实时位置和状态。
-    * **任务编排 (Task Orchestration)**: 协调 RCS/ECS 完成物理动作。
-    * **状态同步 (State Sync)**: 物理动作完成后，通知现有 WMS 更新库存。
+    * **执行管道 (Execution Pipeline)**: 专注于任务的物理执行（搬运、抓取）。
+    * **状态中继**: 将设备的物理状态实时反馈给 WMS，由 WMS 决定下一步逻辑。
+    * **异常熔断**: 一旦 WMS 接口超时或报错，WES 立即暂停相关作业。
 
 * **执行状态数据结构 (Execution State Schema)**:
   ```
@@ -312,7 +315,7 @@ P9 智能仓库使用三种货架类型，各有不同的物理结构和业务�
   **1. 库存查询 (Inventory Query)**
   * **场景**: WES 需要决策时 (如: 分配发料任务)，查询现有 WMS 的库存。
   * **接口**: `GET /api/wms/inventory?material=R001&location=SMT-A-01`
-  * **缓存策略**: WES 可缓存查询结果 (TTL = 30 秒)，减少 API 调用频率。
+  * **缓存策略**: WES 可对查询结果进行短时缓存 (TTL ≤ 30秒)，减少 API 调用频率，但不改变"WMS 为库存主数据源"的架构定位。
 
   **2. 库存预留 (Inventory Reservation)**
   * **场景**: WES 生成发料任务前，向现有 WMS 申请预留库存。
@@ -328,7 +331,10 @@ P9 智能仓库使用三种货架类型，各有不同的物理结构和业务�
     }
     ```
   * **响应**: 现有 WMS 返回 `ReservationID`，并锁定库存。
-  * **释放**: 若任务取消 -> WES 调用 `DELETE /api/wms/inventory/reserve/{ReservationID}` 释放预留。
+  * **释放机制**:
+    * **主动释放**: 任务完成或取消时，WES 调用 `DELETE /api/wms/inventory/reserve/{ReservationID}` 释放预留。
+    * **自动过期**: WMS 在 `expire_time` 后自动释放预留，无需 WES 干预。
+    * **异常恢复**: WES 重启后，查询所有预留记录，释放已过期或已完成的预留。
 
   **3. 库存确认 (Inventory Confirmation)**
   * **场景**: 物理动作完成后 (如: 装箱完成、发料完成)，WES 通知现有 WMS 更新库存。
@@ -603,9 +609,9 @@ P9 智能仓库使用三种货架类型，各有不同的物理结构和业务�
 #### 3.6.4 退料入库与库存更新 (Return Putaway & Inventory Update)
 
 * **WES 数据处理**:
-  1. **库存增加**: `Inventory_Mirror.Qty_Available += Actual_Count`。
+  1. **库存更新**: 立即调用 WMS 接口增加库存: `WMS.Adjust_Inventory(Add, Actual_Count)`.
   2. **追溯记录**: `Return_Log(Original_PKG, New_PKG, Actual_Count, Return_Date)`。
-  3. **SAP 同步**: 推送退料数据至 SAP (异步): `Return_Notification(Material, Qty, New_PKG)`。
+  3. **SAP 同步**: 由 WMS 负责向 SAP 推送退料数据（WES 不越级上报）。
 
 ---
 
@@ -641,8 +647,8 @@ P9 智能仓库使用三种货架类型，各有不同的物理结构和业务�
     * 人工扫描确认 -> WES 更新库存，逻辑与自动线完全一致。
 
   **2. 数据一致性保障 (Data Consistency)**
-  * **关键原则**: 无论自动/人工，WES 的库存镜像和任务状态必须保持一致。
-  * **校验机制**: PDA 提交数据时，WES 执行与自动线相同的校验逻辑 (如: PKG 匹配、容量检查)。
+  * **关键原则**: 无论自动/人工，所有操作必须实时通过 WMS 接口校验。
+  * **校验机制**: PDA 提交数据时，WES 将请求透传给 WMS，由 WMS 返回允许/拒绝指令。WES 不做本地逻辑校验。
 
 #### 3.7.3 通信异常与重试机制 (Communication Exception & Retry)
 
@@ -672,6 +678,14 @@ P9 智能仓库使用三种货架类型，各有不同的物理结构和业务�
   **3. 设备恢复 (Device Recovery)**
   * ECS/RCS 恢复在线 -> WES 自动检测 (心跳机制)。
   * WES 执行 `Health_Check(DeviceID)` -> 若通过，自动恢复挂起任务。
+
+  **4. 上游 WMS 断连处理 (WMS Disconnection Handling)**
+  * **熔断机制**: 若连续 3 次调用 WMS 接口超时或返回 5xx 错误，触发断网保护。
+  * **暂停策略**:
+    * **立即暂停**: 所有涉及库存变动的业务任务 (收货、发料、装箱、入库确认、出库确认等)
+    * **允许继续**: 纯物理搬运任务 (AGV 回充电桩、空箱回流、设备空闲调度等)
+    * **告警通知**: 触发 `System_Pause` 告警，通知 IT 介入
+  * **自动恢复**: WMS 接口恢复正常后，自动继续执行被暂停的任务，无需人工干预。
 
 #### 3.7.4 优先级调整与急料插队 (Priority Adjustment & Urgent Material)
 
@@ -778,6 +792,10 @@ P9 智能仓库使用三种货架类型，各有不同的物理结构和业务�
 
 * **幂等性设计 (Idempotency)**:
   * 所有确认接口 (putaway/issue) 基于 `TaskID` 去重，支持重复调用。
+  * **幂等性规则**:
+    * **相同 TaskID + 相同数据**: 返回成功，不重复执行，返回首次执行结果。
+    * **相同 TaskID + 不同数据**: 返回错误 (409 Conflict)，拒绝执行，提示数据不一致。
+    * **不同 TaskID**: 正常执行新任务。
   * 避免网络重试导致的重复入库/出库。
 
 * **事务补偿 (Transaction Compensation)**:
@@ -825,7 +843,7 @@ P9 智能仓库使用三种货架类型，各有不同的物理结构和业务�
 
 ## 5. 非功能需求 (Non-functional Requirements)
 
-1. **独立性 (Independence)**: 系统启动不应阻塞于 SAP 连接失败。
-2. **数据一致性 (Data Consistency)**: 采用最终一致性模型 (Eventual Consistency) 与上游系统同步，但内部保持强一致性。
-3. **可观测性 (Observability)**: 提供独立的 Prometheus/Grafana 监控接口，监控 API 延迟、队列堆积量及设备在线率。
-4. **灾备 (Disaster Recovery)**: 具备本地数据缓存能力，网络恢复后自动重传。
+1. **启动独立性 (Startup Independence)**: WES 启动不应阻塞于 WMS 连接失败（可启动进入待命状态），但**业务执行**强依赖 WMS。
+2. **数据一致性 (Data Consistency)**: 采用 **强一致性 (Strong Consistency)** 模型。WES 不持有数据，所有库存变动必须在 WMS 端事务提交成功后，物理动作方可视为完成。
+3. **可观测性 (Observability)**: 提供独立的 Prometheus/Grafana 监控接口，重点监控 **WMS 接口延迟**、设备在线率及任务积压。
+4. **故障恢复 (Failure Recovery)**: 不要求本地业务数据持久化缓存。系统重启后，应通过查询 WMS 和现场设备状态重建上下文。

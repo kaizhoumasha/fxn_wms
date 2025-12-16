@@ -6,7 +6,7 @@
 
 ### 1.1 核心原则 (Core Principles)
 - **解耦 (Decoupling)**: WES 不依赖于硬件的内部实现。它发布标准的 **意图指令 (Intent-based Commands)**（例如 "移动单元"），而不是设备特定的指令（例如 "电机 A 旋转"）。
-- **无状态执行 (Stateless Execution)**: WES 维护 **瞬态执行状态 (Transient Execution State)**，但依赖企业级 WMS 作为库存的 **唯一事实来源 (Single Source of Truth)**。
+- **代理执行 (Proxy Execution)**: WES 维护 **瞬态执行状态 (Transient Execution State)**，但对库存数据采用 **零持有 (Zero-Holding)** 策略，所有库存交互均实时代理至 WMS。
 - **插件化架构 (Plugin Architecture)**: 硬件驱动程序以 **适配器 (Adapters)** 形式实现，允许更换不同的硬件供应商而无需更改 WES 核心逻辑。
 
 ## 2. 系统分层 (System Layering)
