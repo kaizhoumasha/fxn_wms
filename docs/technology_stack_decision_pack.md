@@ -1,4 +1,4 @@
-# P9 WES 技术栈决策包（合并版）(Technology Stack Decision Pack)
+# P9 WES 技术栈决策包(Technology Stack Decision Pack)
 
 > **文档版本**: 1.0
 > **日期**: 2025-12-16
@@ -67,7 +67,7 @@ P9 WES 的系统定位是：**独立部署的集成化控制中台**（Independe
 
 ## 5. 候选技术栈(Candidate Stacks)
 
-### A. Python 3.11+ + FastAPI（敏捷与动态策略导向）
+### A. Python 3.13+ + FastAPI（敏捷与动态策略导向）
 
 适配点：
 
@@ -186,8 +186,6 @@ SRS 明确该系统是集成中台，外部依赖会显著影响人力与排期�
 1. **第 0–4 周：平台底座闭环 (Platform Baseline Ready)**：幂等/重试/断点恢复/Outbox/观测/部署一键启动 + Mock 设备与最小链路。
 2. **第 5–10 周：核心业务流 MVP (Core Flows MVP)**：跑通至少 1 条端到端主链路（单据接入 → 编排 → 下发 → 回调 → 确认/对账）。
 3. **第 11–16 周：联调与验收 (Commissioning & UAT)**：多设备并发、异常恢复演练、现场 SOP 与告警闭环。
-
-> 若领导选择方案 C（混合），需额外预留“策略服务契约 + 多服务观测/容错”的工程投入（通常 +1–3 FTE 或拉长 2–4 周）。
 
 ---
 

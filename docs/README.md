@@ -76,6 +76,7 @@
 ### 仓库业务流程 (Warehouse Business Processes)
 - [SRS.md](./SRS.md) 第 3.1 节 - 仓库布局与货架类型
 - [SRS.md](./SRS.md) 第 3.2 节 - 业务流程 (收货、上架、拣货、出库等)
+- [process/inbound_kitting_hybrid_putaway_e2e_tabletop.md](./process/inbound_kitting_hybrid_putaway_e2e_tabletop.md) - 收货+装箱+混合入库 E2E 桌面演练过程记录
 - [user_requirement.md](./user_requirement.md) - 详细业务场景
 
 ### 硬件系统对接 (Hardware Integration)
