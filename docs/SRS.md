@@ -88,6 +88,12 @@
 
 本章节详细定义了 P9 WES 中台的核心业务流程、控制逻辑及与外围系统的交互规范。
 
+> **本阶段集成边界 (Phase Boundary)**  
+> - **RCS 调度**: 仍由现有 WMS 统一调度。WES 生成搬运需求并提交给 WMS，由 WMS 调用 RCS 并将结果/事件回传 WES；WES 不直接调用 RCS。  
+> - **PDA 交互**: PDA 仅对接 WMS 应用；若 WES 需要感知 PDA 结果/事件，由 WMS 推送/同步给 WES。  
+> - **自动化设备**: 所有自动化设备（ECS/视觉/贴标/X-Ray/LCR/打印机等）只通过 WES 接入，WMS 不直连设备。  
+> - **标签打印**: WES 生成打印模板/ZPL。若为自动打印设备，则由 WES 下发；若为人工/非自动打印，则 WMS 获取模板后完成打印并回执结果。
+
 ### 3.1 硬件清单与基础配置 (Hardware & Configuration)
 
 WES 中台负责协调以下核心硬件资源，并维护其基础数据配置：
@@ -168,11 +174,13 @@ P9 智能仓库使用三种货架类型，各有不同的物理结构和业务�
   1. **单据接入 (Order Ingest)**: 调用 `POST /api/v1/orders/inbound` 接收 SAP 的 GRN 数据。
   2. **标签生成 (Label Generation)**:
      * 提供 "打印栈板号" 功能。
-     * WES 生成唯一 `PalletID` 并下发 ZPL 指令给现场打印机。
+     * WES 生成唯一 `PalletID` 并产出模板/ZPL：
+       * **自动打印设备**: 由 WES 南向接口下发至打印机并获取回执。
+       * **人工/非自动打印**: WMS 获取模板后触发打印，打印完成/失败事件由 WMS 回传 WES（如需编排后续流程）。
   3. **多对多绑定 (M:N Binding)**:
      * **逻辑**: 支持 1 个栈板绑定多个 GRN (混托)，或 1 个 GRN 分拆到多个栈板 (分托)。
-     * **校验**: PDA 提交绑定请求时，WES 校验 `Sum(Current_Qty) <= GRN.Remaining_Qty`。
-     * **完成**: 绑定完成后，WES 锁定栈板状态，生成 `Transport_Task` (From Dock To Buffer)。
+     * **校验**: PDA 提交绑定请求时，WMS 校验 `Sum(Current_Qty) <= GRN.Remaining_Qty`，必要校验结果同步给 WES。
+     * **完成**: 绑定完成后，WES 锁定栈板状态，生成 `Transport_Task` (From Dock To Buffer) 并提交给 WMS 调度 RCS。
 
 #### 3.2.2 IQC 动态路由与复判 (IQC Routing & Review)
 
@@ -187,10 +195,10 @@ P9 智能仓库使用三种货架类型，各有不同的物理结构和业务�
   3. **复判路由 (Review Routing)**:
      * **QMS 结果**: WES 接收 `Inspection_Result(GRN, OK/NG)`.
      * **路由算法**:
-       * **All OK**: 指令 RCS 搬运至 Buffer (待入库)。
-       * **Any NG**: 指令 RCS 搬运至 复判区。
+       * **All OK**: 生成搬运需求至 Buffer (待入库)，提交给 WMS 调度 RCS。
+       * **Any NG**: 生成搬运需求至 复判区，提交给 WMS 调度 RCS。
   4. **拆板分拣 (Sorting Support)**:
-     * 在复判区，WES 指导 PDA 进行 "拆板作业": 将 NG 物料移至新栈板 (New_PalletID)。
+     * 在复判区，WES 下发拆板指令，由 WMS PDA 展示并驱动 "拆板作业": 将 NG 物料移至新栈板 (New_PalletID)。
      * 更新库存: 原栈板扣减 NG 数量，新栈板承载 NG 数量 (流向不良品仓)。
 
 ---
@@ -209,7 +217,7 @@ P9 智能仓库使用三种货架类型，各有不同的物理结构和业务�
   **Step 1: 空架补给 (Empty Rack Supply)**
 
   * **监控**: WES 监控装箱区是否有可用空单层货架 (4 个料箱位)。
-  * **决策**: 若无，WES 呼叫 RCS 从 "单层货架存放区" 搬运空架至装箱位。
+  * **决策**: 若无，WES 生成搬运需求从 "单层货架存放区" 补给空架，提交给 WMS 调度 RCS。
   * **ECS 握手**:
     * ECS 机械臂扫描空架所有箱号。
     * `ECS -> WES: Verify_Empty(List<BinID>)`.
@@ -231,10 +239,10 @@ P9 智能仓库使用三种货架类型，各有不同的物理结构和业务�
     * **储位分配**: 计算储位剩余深度，确保可放入当前料盘。
     * **返回指令**: `WES -> ECS: Put_Instruction(BinID, SlotID, Expected_Stack_Height)`.
 
-  **Step 3: 异常与满架 (Exception & Full)**
+**Step 3: 异常与满架 (Exception & Full)**
 
   * **装不进**: 若 ECS 反馈 `Put_Fail` (物理无法放入)，WES 标记该 Slot 异常，重新分配。
-  * **满架切出**: WES 计算货架已满，生成 `Transport_Task` (To SMT_Buffer)，并呼叫 RCS 补新空架。
+  * **满架切出**: WES 计算货架已满，生成 `Transport_Task` (To SMT_Buffer)，提交给 WMS 调度 RCS，并补新空架。
 
 #### 3.3.2 混合入库策略 (Hybrid Inbound Strategy)
 
@@ -251,11 +259,11 @@ P9 智能仓库使用三种货架类型，各有不同的物理结构和业务�
   2. **满箱交换执行 (Full Exchange Execution)**:
 
      * WES 锁定五层货架上的 `Empty_Bin` (指定层号和 A/B 面)。
-     * WES 指令 RCS (CTU) 执行原子动作: `Exchange(Source_Single_Layer_Rack, Target_5_Layer_Rack, Layer, Side)`.
+     * WES 生成交换任务 `Exchange(Source_Single_Layer_Rack, Target_5_Layer_Rack, Layer, Side)` 并提交给 WMS 调度 RCS/CTU 执行原子动作。
      * **数据更新**: 交换完成后，WES 交换两个容器的库存属性。
   3. **流水线零散入库 (Pipeline Picking Execution)**:
 
-     * **调度**: WES 调度 Target Bin (从五层货架) 到流水线。
+     * **调度**: WES 生成 Target Bin (从五层货架) 到流水线的搬运需求，提交 WMS 调度 RCS。
      * **拣选指令**:
        * ECS 扫描流水线上的 Target Bin。
        * `WES -> ECS: Pick_List(From_Rack, To_Bin, Qty)`.
@@ -462,7 +470,7 @@ P9 智能仓库使用三种货架类型，各有不同的物理结构和业务�
 * **WES 特殊处理**:
   1. **专属路由**: WES 识别物料属性 `IsHighValue = True` -> 生成 `Transport_Task(To HighValue_Area)`，不经过普通暂存区。
   2. **六合一绑定强制校验**:
-     * WES 要求 PDA 必须扫描 **六合一码 (PKG)** 才能完成入库。
+     * WES 下发规则，WMS PDA 必须扫描 **六合一码 (PKG)** 才能完成入库，WMS 将结果同步给 WES。
      * 校验逻辑: `PKG.Material == GRN.Material && PKG.Vendor == GRN.Vendor`。
   3. **IQC 取样追溯**:
      * 记录 `Sample_Log(PalletID, PKG, IQC_Inspector, Sample_Time)`。
@@ -504,7 +512,7 @@ P9 智能仓库使用三种货架类型，各有不同的物理结构和业务�
 
   * **围膜拆除**:
     * WES 生成 `Transport_Task(To Unwrap_Zone)`。
-    * 人工拆围膜后，PDA 呼叫 RCS -> WES 生成 `Transport_Task(To Unpack_Line)`。
+    * 人工拆围膜后，WMS PDA 呼叫（WMS 记录作业结果）-> WES 生成 `Transport_Task(To Unpack_Line)`，由 WMS 调度 RCS 执行。
   * **箱级校验**:
     * `ECS -> WES: Validate_Box(PKG, Box_Barcode)`。
     * WES 校验: `PKG.Material == WorkOrder.Material`。
@@ -538,8 +546,8 @@ P9 智能仓库使用三种货架类型，各有不同的物理结构和业务�
 * **场景**: 产线下线 -> 料盘拆飞达 -> 放入标准胶框 -> 单层货架 -> SMT 退料作业区。
 * **货架说明**: 使用 **退货货架 (Return Rack)** (详见 3.1.2) 存放退料料盘，货架式结构支持料盘级追踪，具有 A/B 面区分。
 * **WES 处理流程**:
-  1. **人工呼叫**: 仓库人员 PDA 呼叫 RCS -> WES 生成 `Transport_Task(To Return_Area)`。
-  2. **物料分类**: WES 提供 PDA 界面，指导人工区分:
+  1. **人工呼叫**: 仓库人员通过 WMS PDA 呼叫搬运 -> WES 生成 `Transport_Task(To Return_Area)`，提交 WMS 调度 RCS。
+  2. **物料分类**: WMS PDA 界面指导人工区分（分类结果同步给 WES）:
      * **电子料 (Electronic)**: 进入 X-Ray/LCR 流程。
      * **MSD 物料**: 标记 `RequiresDrying = True`。
      * **高值物料**: 标记 `IsHighValue = True`，专人处理。
@@ -558,7 +566,7 @@ P9 智能仓库使用三种货架类型，各有不同的物理结构和业务�
   END IF
   ```
 * **测试流程**:
-  1. **PDA 扫描**: 作业员扫描 PKG -> WES 返回 `LCR_Required(True/False)`。
+  1. **PDA 扫描**: 作业员在 WMS PDA 扫描 PKG -> WMS 调用 WES 获取 `LCR_Required(True/False)` 并回显。
   2. **测试执行**: 若需测试 -> 连接 LCR 测试仪 -> WES 接收测试结果 `LCR_Result(Pass/Fail)`。
   3. **结果处理**:
      * **Pass**: 放入流水线，进入 X-Ray 清点。
@@ -660,13 +668,13 @@ P9 智能仓库使用三种货架类型，各有不同的物理结构和业务�
     * 管理员在 WES 界面点击 "切换人工模式"。
     * WES 挂起所有自动任务 -> 生成 `Manual_Task_List`。
   * **PDA 指导**:
-    * WES 提供 PDA 界面，显示: "请从货架 A-01 取料盘 PKG-12345，放入料箱 B-03"。
-    * 人工扫描确认 -> WES 更新库存，逻辑与自动线完全一致。
+    * WES 生成人工指令，由 WMS PDA 展示: "请从货架 A-01 取料盘 PKG-12345，放入料箱 B-03"。
+    * 人工扫描确认在 WMS PDA 完成，WMS 同步结果给 WES，逻辑与自动线完全一致。
 
   **2. 数据一致性保障 (Data Consistency)**
 
   * **关键原则**: 无论自动/人工，所有操作必须实时通过 WMS 接口校验。
-  * **校验机制**: PDA 提交数据时，WES 将请求透传给 WMS，由 WMS 返回允许/拒绝指令。WES 不做本地逻辑校验。
+  * **校验机制**: PDA 提交数据到 WMS，WMS 调用 WES（如需编排/策略校验）并最终由 WMS 返回允许/拒绝指令。WES 不做本地逻辑校验。
 
 #### 3.7.3 通信异常与重试机制 (Communication Exception & Retry)
 
@@ -726,7 +734,7 @@ P9 智能仓库使用三种货架类型，各有不同的物理结构和业务�
 
 * **WES 多层校验**:
   1. **输入校验 (Input Validation)**:
-     * PDA 扫描 PKG -> WES 校验: `PKG.Format == "6-in-1" && PKG.Material IN Master_Data`。
+     * PDA 扫描 PKG (通过 WMS) -> WMS 调用 WES 校验: `PKG.Format == "6-in-1" && PKG.Material IN Master_Data`。
   2. **逻辑校验 (Logic Validation)**:
      * 装箱前 -> WES 校验: `Bin.Remaining_Space >= Material.Dims`。
   3. **物理校验 (Physical Validation)**:
@@ -759,6 +767,8 @@ P9 智能仓库使用三种货架类型，各有不同的物理结构和业务�
   * **查询驱动 (Query-Driven)**: WES 需要库存数据时，实时查询现有 WMS。
   * **确认驱动 (Confirmation-Driven)**: WES 完成物理动作后，通知现有 WMS 更新库存。
   * **预留机制 (Reservation)**: WES 通过预留接口锁定库存，避免超发。
+  * **RCS 通道 (Phase Boundary)**: 本阶段 RCS 仍由现有 WMS 统一调度。WES 只提交搬运/交换需求给 WMS，由 WMS 调用 RCS 并回传结果/事件。
+  * **PDA 通道**: PDA 仅与 WMS 交互；WES 如需感知 PDA 作业结果，由 WMS 推送/同步。
 
 #### 3.8.2 集成接口规范 (Integration Interface Specification)
 
@@ -842,22 +852,22 @@ P9 智能仓库使用三种货架类型，各有不同的物理结构和业务�
 
 (详细定义见章节 4)
 
-* **SAP**: 收货单、工单、主数据 (通过现有 WMS 中转或直接对接)。
-* **现有 WMS**: 库存查询、库存预留、入库确认、出库确认。
+* **SAP**: 收货单、工单、主数据（本阶段仅通过现有 WMS 中转，不直接对接）。
+* **现有 WMS**: SAP 转发的单据、库存查询、库存预留、入库/出库确认——WES 的唯一业务/库存数据来源。
 * **RCS**: 搬运 (Move)、交换 (Exchange)、旋转 (Rotate)。
 * **ECS**: 校验 (Check)、指令 (Instruction)、结果 (Result)。
 * **QMS**: 抽检请求、结果回传。
 
 ## 4. 接口需求 (Interface Requirements)
 
-### 4.1 北向接口 (Northbound API - To SAP/Existing WMS)
+### 4.1 北向接口 (Northbound API - To Existing WMS)
 
-* **定位**: 标准化的业务接入层，接收上游系统的单据和主数据。
+* **定位**: 标准化的业务接入层，接收上游 SAP 通过现有 WMS 转发的单据和主数据。本阶段 WES 不直接调用 SAP。
 * **协议**: RESTful API (HTTPS).
 * **核心接口**:
-  * `POST /api/v1/orders/inbound`: 接收收货通知 (来自 SAP 或现有 WMS)。
-  * `POST /api/v1/orders/production`: 接收生产工单 (来自 SAP 或现有 WMS)。
-  * `POST /api/v1/master-data`: 接收物料主数据同步。
+  * `POST /api/v1/orders/inbound`: 接收收货通知 (由现有 WMS 转发 SAP 单据)。
+  * `POST /api/v1/orders/production`: 接收生产工单 (由现有 WMS 转发 SAP 单据)。
+  * `POST /api/v1/master-data`: 接收物料主数据同步 (由现有 WMS 转发 SAP 主数据)。
   * `GET /api/v1/wms/inventory/query`: 调用现有 WMS 的库存查询接口。
   * `POST /api/v1/wms/inventory/reserve`: 调用现有 WMS 的库存预留接口。
   * `POST /api/v1/wms/inventory/confirm`: 向现有 WMS 推送入库/出库确认。

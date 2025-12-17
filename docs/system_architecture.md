@@ -2,7 +2,7 @@
 
 ## 1. 架构概览 (Architectural Overview)
 
-休斯顿 P9 **仓储执行系统 (WES)** 设计为一个 **解耦的、事件驱动的控制中台 (Decoupled, Event-Driven Control Middleware)**。它是连接上层业务逻辑 (SAP/WMS) 与底层物理执行 (Hardware) 的 "执行大脑"。
+休斯顿 P9 **仓储执行系统 (WES)** 设计为一个 **解耦的、事件驱动的控制中台 (Decoupled, Event-Driven Control Middleware)**。它是连接上层业务逻辑 (SAP→现有 WMS) 与底层物理执行 (Hardware) 的 "执行大脑"。
 
 ### 1.1 核心原则 (Core Principles)
 - **解耦 (Decoupling)**: WES 不依赖于硬件的内部实现。它发布标准的 **意图指令 (Intent-based Commands)**（例如 "移动单元"），而不是设备特定的指令（例如 "电机 A 旋转"）。
@@ -14,7 +14,7 @@
 系统划分为三个严格的逻辑层：
 
 ### L1 - 北向层 (Northbound Layer - Business Integration)
-**职责**: 与 **上游系统 (Upstream Systems)** (SAP / Enterprise WMS) 交互。
+**职责**: 与 **上游系统 (Upstream Systems)** 交互，本阶段由现有 WMS 统一对接 SAP，WES 仅与现有 WMS 通信。
 - **入站 (Inbound)**: 提供 REST API 接收 `Order_Ingest` (收货通知单 GRNs, 工单 Work Orders) 和 `Master_Data`。
 - **出站 (Outbound)**: 通过 Webhooks/API 调用 `Confirm_Inventory` (上架/发料) 和 `Sync_Status`。
 - **关键组件**:
@@ -44,8 +44,8 @@
 
 ## 3. 数据流与边界 (Data Flow & Boundaries)
 
-### 3.1 WES 与 WMS 边界
-- **WMS 拥有**: "我们有什么" (库存数量、成本、所有者)。
+### 3.1 WES 与 WMS 边界（SAP 通过现有 WMS 转发）
+- **WMS 拥有**: "我们有什么" (库存数量、成本、所有者)，是 WES 的唯一业务/库存数据来源；SAP 数据由 WMS 转发。
 - **WES 拥有**: "它正在哪里移动" (实时坐标、AGV 状态、瞬态箱位)。
 - **交互**:
   1. WES 在开始任务前向 WMS 请求 **库存预留 (Inventory Reservation)**。
