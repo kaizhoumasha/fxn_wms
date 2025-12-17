@@ -2,9 +2,10 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends
 
-from src.app.dependencies import get_ingest_inbound_order_use_case
+from src.app.dependencies import get_order_service
 from src.app.schemas.orders import InboundOrderAccepted, InboundOrderIn
-from src.core.use_cases.ingest_inbound_order import IngestInboundOrder
+from src.core.ports import CreateInboundOrder
+from src.core.services.order_service import OrderService
 
 
 router = APIRouter(prefix="/api/v1/orders", tags=["orders"])
@@ -13,12 +14,21 @@ router = APIRouter(prefix="/api/v1/orders", tags=["orders"])
 @router.post("/inbound", response_model=InboundOrderAccepted)
 async def ingest_inbound_order(
     payload: InboundOrderIn,
-    use_case: IngestInboundOrder = Depends(get_ingest_inbound_order_use_case),
+    service: OrderService = Depends(get_order_service),
 ) -> InboundOrderAccepted:
-    result = await use_case.handle(payload)
+    # 构造命令对象
+    cmd = CreateInboundOrder(
+        request_id=payload.request_id,
+        grn_id=payload.grn_id,
+        dock_id=payload.dock_id,
+        payload=payload.model_dump(),
+    )
+    
+    # 调用服务
+    inbound_order_id = await service.ingest_inbound_order(cmd)
+    
     return InboundOrderAccepted(
         request_id=payload.request_id,
-        inbound_order_id=str(result.inbound_order_id),
+        inbound_order_id=inbound_order_id,
         status="ACCEPTED",
     )
-

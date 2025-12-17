@@ -6,7 +6,7 @@ from fastapi import Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.ports import InboundOrderRepository, JobQueue, OutboxRepository
-from src.core.use_cases.ingest_inbound_order import IngestInboundOrder
+from src.core.services.order_service import OrderService
 from src.infra.outbox.repository import SqlAlchemyOutboxRepository
 from src.infra.repositories.inbound_orders import SqlAlchemyInboundOrderRepository
 
@@ -46,9 +46,9 @@ def get_outbox_repo(
     return SqlAlchemyOutboxRepository(session)
 
 
-def get_ingest_inbound_order_use_case(
+def get_order_service(
     repo: InboundOrderRepository = Depends(get_inbound_order_repo),
     outbox: OutboxRepository = Depends(get_outbox_repo),
     jobs: JobQueue = Depends(get_job_queue),
-) -> IngestInboundOrder:
-    return IngestInboundOrder(repo=repo, outbox=outbox, jobs=jobs)
+) -> OrderService:
+    return OrderService(repo=repo, outbox=outbox, jobs=jobs)
