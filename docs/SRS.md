@@ -88,10 +88,11 @@
 
 本章节详细定义了 P9 WES 中台的核心业务流程、控制逻辑及与外围系统的交互规范。
 
-> **本阶段集成边界 (Phase Boundary)**  
-> - **RCS 调度**: 仍由现有 WMS 统一调度。WES 生成搬运需求并提交给 WMS，由 WMS 调用 RCS 并将结果/事件回传 WES；WES 不直接调用 RCS。  
-> - **PDA 交互**: PDA 仅对接 WMS 应用；若 WES 需要感知 PDA 结果/事件，由 WMS 推送/同步给 WES。  
-> - **自动化设备**: 所有自动化设备（ECS/视觉/贴标/X-Ray/LCR/打印机等）只通过 WES 接入，WMS 不直连设备。  
+> **本阶段集成边界 (Phase Boundary)**
+>
+> - **RCS 调度**: 仍由现有 WMS 统一调度。WES 生成搬运需求并提交给 WMS，由 WMS 调用 RCS 并将结果/事件回传 WES；WES 不直接调用 RCS。
+> - **PDA 交互**: PDA 仅对接 WMS 应用；若 WES 需要感知 PDA 结果/事件，由 WMS 推送/同步给 WES。
+> - **自动化设备**: 所有自动化设备（ECS/视觉/贴标/X-Ray/LCR/打印机等）只通过 WES 接入，WMS 不直连设备。
 > - **标签打印**: WES 生成打印模板/ZPL。若为自动打印设备，则由 WES 下发；若为人工/非自动打印，则 WMS 获取模板后完成打印并回执结果。
 
 ### 3.1 硬件清单与基础配置 (Hardware & Configuration)
@@ -241,8 +242,8 @@ P9 智能仓库使用三种货架类型，各有不同的物理结构和业务�
 
 **Step 3: 异常与满架 (Exception & Full)**
 
-  * **装不进**: 若 ECS 反馈 `Put_Fail` (物理无法放入)，WES 标记该 Slot 异常，重新分配。
-  * **满架切出**: WES 计算货架已满，生成 `Transport_Task` (To SMT_Buffer)，提交给 WMS 调度 RCS，并补新空架。
+* **装不进**: 若 ECS 反馈 `Put_Fail` (物理无法放入)，WES 标记该 Slot 异常，重新分配。
+* **满架切出**: WES 计算货架已满，生成 `Transport_Task` (To SMT_Buffer)，提交给 WMS 调度 RCS，并补新空架。
 
 #### 3.3.2 混合入库策略 (Hybrid Inbound Strategy)
 
@@ -566,7 +567,7 @@ P9 智能仓库使用三种货架类型，各有不同的物理结构和业务�
   END IF
   ```
 * **测试流程**:
-  1. **PDA 扫描**: 作业员在 WMS PDA 扫描 PKG -> WMS 调用 WES 获取 `LCR_Required(True/False)` 并回显。
+  1. **PDA 扫描**: 作业员在 WMS PDA 扫描 PKG -> 调用 WMS 获取 `LCR_Required(True/False)` 并回显。
   2. **测试执行**: 若需测试 -> 连接 LCR 测试仪 -> WES 接收测试结果 `LCR_Result(Pass/Fail)`。
   3. **结果处理**:
      * **Pass**: 放入流水线，进入 X-Ray 清点。
