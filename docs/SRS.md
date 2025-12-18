@@ -166,40 +166,53 @@ P9 智能仓库使用三种货架类型，各有不同的物理结构和业务�
 
 ### 3.2 收货入库执行 (Inbound Execution)
 
-本模块处理从码头卸货到上架任务生成的全过程，WES 充当 **流程编排者 (Process Orchestrator)**。
+本模块处理从码头卸货到上架任务生成的全过程。当前阶段 **码头到暂存区由 WMS 完整主导**，WES 不参与打印与绑定环节；后续进入自动化交接/上架环节时再切入 WES 编排。
 
 #### 3.2.1 码头接收与绑定 (Dock Receiving & Binding)
 
 * **流程概述**: 接收 SAP 单据 -> 打印栈板码 -> PDA 物理绑定 -> 呼叫 RCS。
-* **WES 核心功能**:
-  1. **单据接入 (Order Ingest)**: 调用 `POST /api/v1/orders/inbound` 接收 SAP 的 GRN 数据。
-  2. **标签生成 (Label Generation)**:
-     * 提供 "打印栈板号" 功能。
-     * WES 生成唯一 `PalletID` 并产出模板/ZPL：
-       * **自动打印设备**: 由 WES 南向接口下发至打印机并获取回执。
-       * **人工/非自动打印**: WMS 获取模板后触发打印，打印完成/失败事件由 WMS 回传 WES（如需编排后续流程）。
+* **WMS 核心功能（当前阶段）**:
+  1. **单据接入 (Order Ingest)**: WMS 与 SAP 直连获取 GRN 数据，必要时将副本透传给 WES 仅做记录（非必需）。
+  2. **标签生成与打印 (Label Generation & Print)**:
+     * WMS 生成唯一 `PalletID`，渲染 ZPL/CPCL，并直接对接打印机（TCP 9100 或供应商驱动）。
+     * 目前 WES **不对接打印机**，也不承担自动打印调度；若需共享模板，可后续提供渲染接口给 WMS 调用。
   3. **多对多绑定 (M:N Binding)**:
-     * **逻辑**: 支持 1 个栈板绑定多个 GRN (混托)，或 1 个 GRN 分拆到多个栈板 (分托)。
-     * **校验**: PDA 提交绑定请求时，WMS 校验 `Sum(Current_Qty) <= GRN.Remaining_Qty`，必要校验结果同步给 WES。
-     * **完成**: 绑定完成后，WES 锁定栈板状态，生成 `Transport_Task` (From Dock To Buffer) 并提交给 WMS 调度 RCS。
+     * **逻辑**: 支持 1 个栈板绑定多个 GRN (混托)，或 1 个 GRN 分托到多个栈板。
+     * **校验**: PDA 提交绑定请求时，WMS 校验 `Sum(Current_Qty) <= GRN.Remaining_Qty`；WMS 自行记录绑定明细与锁托。
+     * **完成**: 绑定完成后，WMS 生成并下发 `Transport_Task` (From Dock To Buffer)，直接调度 RCS；当前阶段不经由 WES。
+* **后续演进（留作未来选项）**: 如需在自动化环节对接 WES，可在栈板进入自动化交接前，将汇总后的栈板物料概要和状态同步给 WES，用于后续编排。
 
 #### 3.2.2 IQC 动态路由与复判 (IQC Routing & Review)
 
 * **流程概述**: 暂存区 -> IQC 待检 -> 检验/复判 -> 路由分发。
-* **WES 核心功能**:
+* **设计理念**: 采用**拉动式 (Pull)** 而非推动式 (Push) 模式，由 IQC 人员根据工作负荷和优先级主动呼叫，避免 IQC 待检区拥堵。
+* **WMS 核心功能**:
   1. **抽检策略 (Sampling Logic)**:
-     * WES 调用 QMS 接口查询抽检策略: `POST /api/qms/sampling/query`，传入 `(Material, Vendor, Qty)`。
-     * QMS 返回抽检量；若 `SamplingQty > 0`，WES 生成 `Route_Task` (To IQC_Area)。
-  2. **取样与归还 (Traceability)**:
-     * 记录 IQC 取样动作: `WES_Log(PalletID, PKG_Code, Sample_Action)`.
+     * WMS 调用 QMS 接口查询抽检策略: `POST /api/qms/sampling/query`，传入 `(Material, Vendor, Qty)`。
+     * QMS 返回抽检量；若 `SamplingQty > 0`，WMS 生成待送检任务列表 (不自动调度 RCS)。
+  2. **人工呼叫送检 (Manual Call)**:
+     * IQC 人员在 WMS Web 界面查看"IQC 待送检列表"。
+     * IQC 人员根据工作负荷、优先级、IQC 待检区容量，主动选择栈板并点击"呼叫送检"。
+     * WMS 生成运输任务，调度 RCS 搬运栈板到 IQC 待检区。
+     * **提醒机制**: 高优先级提醒、长时间等待提醒、容量监控。
+  3. **取样与归还 (Traceability)**:
+     * 记录 IQC 取样动作: `WMS_Log(PalletID, PKG_Code, Sample_Action)`.
      * 记录归还动作: 确保样品回归原栈板。
-  3. **复判路由 (Review Routing)**:
-     * **QMS 结果**: WES 接收 `Inspection_Result(GRN, OK/NG)`.
+  4. **检验完成确认 (Inspection Completion)**:
+     * IQC 作业员归还所有样品后，在 WMS PDA 中点击"检验完成"按钮。
+     * WMS 校验所有取样记录已归还，查询 QMS 获取检验结果。
+     * WMS 根据检验结果生成路由任务，调度 RCS 执行搬运。
+     * **兜底机制**: 定时轮询检查"已归还但未完成"的栈板，自动触发完成流程。
+  5. **复判路由 (Review Routing)**:
+     * **QMS 结果**: WMS 接收 `Inspection_Result(GRN, OK/NG)`.
      * **路由算法**:
-       * **All OK**: 生成搬运需求至 Buffer (待入库)，提交给 WMS 调度 RCS。
-       * **Any NG**: 生成搬运需求至 复判区，提交给 WMS 调度 RCS。
-  4. **拆板分拣 (Sorting Support)**:
-     * 在复判区，WES 下发拆板指令，由 WMS PDA 展示并驱动 "拆板作业": 将 NG 物料移至新栈板 (New_PalletID)。
+       * **All OK**: 生成搬运需求至 Buffer (待入库)，调度 RCS。
+       * **Any NG**: 生成搬运需求至 复判区，调度 RCS。
+  6. **复判完成确认 (Review Completion)**:
+     * IQC 作业员在 QMS 中录入复判结果后，在 WMS PDA 中点击"复判完成"按钮。
+     * WMS 查询 QMS 获取复判结果，根据结果生成路由任务。
+  7. **拆板分拣 (Sorting Support)**:
+     * 在复判区，WMS 下发拆板指令，由 WMS PDA 展示并驱动 "拆板作业": 将 NG 物料移至新栈板 (New_PalletID)。
      * 更新库存: 原栈板扣减 NG 数量，新栈板承载 NG 数量 (流向不良品仓)。
 
 ---
