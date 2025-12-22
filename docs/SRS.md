@@ -237,21 +237,19 @@ P9 智能仓库使用三种货架类型，各有不同的物理结构和业务�
     * `ECS -> WES: Verify_Empty(List<BinID>)`.
     * WES 确认无误后，允许作业启动。
 
-  **Step 2: 视觉识别与校验 (Vision & Validation)**
+  **Step 2: 视觉识别与分箱校验 (Vision & Binning Validation)**
 
-  * **动作**: 机械臂抓取料盘 -> 拍照。
+  * **动作**: 料盘沿流水线输送 -> 到位触发视觉系统扫描。
   * **交互**:
-    * `ECS -> WES: Check_Material(PKG_Code, Dims, Thickness)`.
-  * **WES 校验**:
-    * 验证 PKG 是否属于当前作业的 GRN。
-    * 验证 `Dims/Thickness` 是否与主数据偏差过大 (防错)。
-  * **WES 分配算法 (Binning Algorithm)**:
-    * **同类合并**: 优先放入已存有相同 `Material + Vendor + DC` 的储位。
-    * **料箱选择**:
-      * 7 寸料盘 -> 优先 A 型料箱 (6 个储位) > B 型料箱 (2 个 7 寸储位)
-      * 13/15 寸料盘 -> B 型料箱 (大尺寸储位)
-    * **储位分配**: 计算储位剩余深度，确保可放入当前料盘。
-    * **返回指令**: `WES -> ECS: Put_Instruction(BinID, SlotID, Expected_Stack_Height)`.
+    * `ECS -> WES: Material_Scanned(PKG_Code, Dims, Thickness)` (上报扫描结果)。
+  * **WES 处理逻辑**:
+    1. **校验**: 验证 PKG 是否属于当前 GRN，校验 `Dims/Thickness` 偏差。
+    2. **分配 (Binning Algorithm)**:
+       * **同类合并**: 优先放入已存有相同 `Material + Vendor + DC` 的储位。
+       * **料箱选择**: 7 寸优先 A 型料箱，13/15 寸选择 B 型料箱。
+       * **深度计算**: 实时计算储位剩余深度，确保容量充足。
+  * **指令下发**: `WES -> ECS: Put_Instruction(BinID, SlotID, Expected_Stack_Height)`.
+  * **执行**: ECS 接收指令后，驱动机械臂从流水线抓取料盘并执行放入动作。
 
 **Step 3: 异常与满架 (Exception & Full)**
 
