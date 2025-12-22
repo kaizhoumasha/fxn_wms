@@ -22,6 +22,24 @@ tags: [audit, design, validation, quality]
 
 ---
 
+## 工具与思考模式 (Tools & Thinking Mode)
+
+**启用模式**: `--ultrathink` (最大深度分析，~32K tokens)
+
+**可用工具**:
+- **Sequential Thinking** (`mcp__sequential-thinking__sequentialthinking`): 用于系统性审计分析、一致性验证、问题诊断
+- **Serena Tools** (`mcp__serena__*`): 用于文档探索、模式搜索、审计记忆管理
+  - `search_for_pattern`, `list_dir`, `find_file` - 文档定位
+  - `write_memory`, `read_memory` - 审计结果持久化
+
+**使用场景**:
+- 需求覆盖率分析 → Sequential Thinking
+- 内部一致性验证 → Sequential Thinking
+- 文档模式搜索 → Serena search tools
+- 审计结果记录 → Serena memory tools
+
+---
+
 ## 审计要求
 
 ### 1. 与 user_requirement.md 的对照审计

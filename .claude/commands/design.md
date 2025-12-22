@@ -22,6 +22,24 @@ tags: [design, srs, documentation]
 
 ---
 
+## 工具与思考模式 (Tools & Thinking Mode)
+
+**启用模式**: `--ultrathink` (最大深度分析，~32K tokens)
+
+**可用工具**:
+- **Sequential Thinking** (`mcp__sequential-thinking__sequentialthinking`): 用于复杂的多步骤推理、架构分析、假设验证
+- **Serena Tools** (`mcp__serena__*`): 用于代码探索、符号操作、项目记忆管理
+  - `find_symbol`, `search_for_pattern`, `get_symbols_overview` - 代码理解
+  - `write_memory`, `read_memory`, `list_memories` - 会话持久化
+
+**使用场景**:
+- 架构决策分析 → Sequential Thinking
+- 代码模式探索 → Serena search/find tools
+- 复杂业务逻辑推理 → Sequential Thinking
+- 跨会话上下文保持 → Serena memory tools
+
+---
+
 ## 执行步骤
 
 请按以下步骤生成设计文档：
