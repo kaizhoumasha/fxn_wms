@@ -223,43 +223,77 @@ P9 智能仓库使用三种货架类型，各有不同的物理结构和业务�
 
 #### 3.3.0 WES 核心基础平台 (WES Core Foundation Platform)
 
-为支撑后续章节中复杂的 SMT 智能装箱 (3.3.1)、混合入库 (3.3.2) 及 生产发料 (3.3.3) 业务，WES 必须首先构建一个 **标准化的核心能力平台 (Core Capability Platform)**。根据 *@[docs/third_party_integration_whitepaper.md]* 定义的接入标准，该平台需具备以下四大软件基础设施：
+为支撑后续章节中复杂的 SMT 智能装箱 (3.3.1)、混合入库 (3.3.2) 及 生产发料 (3.3.3) 业务，WES 必须首先构建一个 **标准化的核心能力平台 (Core Capability Platform)**。根据 *@[docs/third_party_integration_whitepaper.md]* 定义的接入标准，该平台需具备以下软件基础设施：
 
-**1. ECS 集成与异构适配 (ECS Integration & Heterogeneous Adaptation)**
+**1. 控制系统集成 (Control System Integration)**
 
-*   **架构约束 (Architectural Constraint)**:
-    *   WES **严禁直接连接** 底层 PLC、传感器或电机。所有物理设备的控制均由硬件供应商提供的 **ECS (Equipment Control System)** 负责封装。
-*   **标准协议层 (Standard Protocol Layer)**:
-    *   **推荐协议**: 优先采用 **HTTP/1.1 (RESTful JSON)** 接口标准，实现跨语言、跨平台的轻量级交互。
-    *   **逻辑位置映射**: WES 仅下发 **逻辑位置ID** (如 `STATION_A`, `RACK_01`)，由 ECS 负责将其解析为物理坐标 (X,Y,Z) 或伺服脉冲，实现业务逻辑与物理参数的解耦。
-*   **适配器模式**: 针对不支持标准 HTTP 协议的旧设备，WES 提供适配器层将私有协议转换为内部标准对象模型。
+*   **架构约束**: WES 不直接控制底层 PLC、传感器或电机。所有物理设备的控制由硬件供应商提供的控制系统 (如装箱流水线控制系统、机构件流水线控制系统) 负责封装。
+*   **通信协议**: 采用 HTTP/HTTPS 接口进行消息交互 (详见白皮书 2.1 节)。
+*   **逻辑位置映射**: WES 仅下发逻辑位置ID (如 `STATION_A`, `RACK_01`)，由控制系统负责解析为物理坐标，实现业务逻辑与物理参数的解耦。
 
-**2. 动态任务编排引擎 (Dynamic Task Orchestration Engine)**
+**2. 异步消息交互 (Async Message Interaction)**
 
-*   **异步指令模式 (Async Command Pattern)**:
-    *   采用 **"下发(Command) -> 应答(Ack) -> 回调(Callback)"** 的三段式交互机制，避免长连接阻塞。
+*   **交互模式**: 采用 **"下发(Command) -> 应答(Ack) -> 回调(Callback)"** 的三段式机制。
     *   **WES**: 发送指令 -> 收到 `200 OK` (代表已接收) -> 继续处理其他任务。
-    *   **ECS**: 执行动作 -> 调用 `Report_Result` 回调接口 -> WES 更新任务状态。
-*   **原子指令集 (Atomic Instruction Set)**:
-    *   支持白皮书定义的标准动作类型：`PICK` (抓取), `PUT` (放置), `SCAN` (扫码识别), `PROCESS` (加工/贴标)。
-*   **流量控制**: 基于信号量机制限制向单一 ECS 节点的并发指令数，防止物理拥堵。
+    *   **控制系统**: 执行动作 -> 调用 `Report_Result` 回调接口 -> WES 更新任务状态。
+*   **标准指令**: 支持白皮书定义的标准动作类型：`PICK` (抓取), `PUT` (放置), `SCAN` (扫码识别), `PROCESS` (加工/贴标)。
 
-**3. 南向指令标准化 (Southbound Command Standardization)**
+**3. 标准接口定义 (Standard Interface Definition)**
 
-*   **标准接口定义**:
-    *   **下行接口**: `Receive_Command` (接收任务), `Cancel_Command` (取消任务), `Health_Check` (状态查询)。
-    *   **上行接口**: `Report_Result` (任务结果回传), `Event_Push` (设备事件上报: 急停/离线)。
-*   **幂等性保障 (Idempotency)**:
-    *   所有下发指令携带全局唯一的 `command_id`。
-    *   ECS 必须通过缓存机制处理重复指令，防止因 WES 网络重试导致的物理动作重复执行。
+*   **下行接口** (WES 调用控制系统):
+    *   `Receive_Command` (接收任务)
+    *   `Cancel_Command` (取消任务)
+    *   `Health_Check` (状态查询)
+*   **上行接口** (控制系统调用 WES):
+    *   `Report_Result` (任务结果回传: OK/NG)
+    *   `Event_Push` (设备事件上报: 急停/离线/到位)
+*   **幂等性保障**: 所有指令携带全局唯一的 `command_id`，控制系统必须缓存已处理指令，防止重复执行物理动作。
 
-**4. 高可用与自愈框架 (Resiliency & Self-Healing Framework)**
+**4. 重试与异常处理 (Retry & Exception Handling)**
 
-*   **重试与死信 (Retry & DLQ)**:
-    *   **指数退避**: 接口调用超时 (10s) 后，按 `1s, 2s, 4s` 策略自动重试。
-    *   **死信队列**: 超过重试次数 (3次) 的指令移入死信队列 (DLQ)，并触发报警等待人工处理 (3.7.2)。
-*   **状态镜像与心跳**:
-    *   WES 以 **1Hz** 频率轮询 ECS `Health_Check` 接口（或基于心跳包），在 Redis 中维护设备状态镜像 (`IDLE` / `RUNNING` / `ERROR` / `OFFLINE`)，支撑上层业务的实时可用性判断。
+*   **超时与重试**: 接口调用超时 (10s) 后，按指数退避策略 (`1s, 2s, 4s`) 自动重试，最多 3 次 (详见白皮书 4.2 节)。
+*   **异常处理**: 超过重试次数后触发报警，需要人工介入处理。
+*   **状态监控**: WES 定期轮询控制系统 `Health_Check` 接口，维护设备状态 (`IDLE` / `RUNNING` / `ERROR` / `OFFLINE`)。
+
+**5. 设备层次结构与基础数据 (Device Hierarchy & Master Data)**
+
+*   **设备组织层次 (Device Organization Hierarchy)**:
+    *   建立 **区域 (Zone) → 作业线 (WorkLine) → 设备 (Device)** 的三级组织结构，用于任务路由和设备管理。
+        *   **区域 (Zone)**: 物理区域划分 (如 `SMT作业区`, `机构件作业区`, `料盘装箱区`)。
+        *   **作业线 (WorkLine)**: 区域内的生产线或工作站 (如 `SMT自动线1`, `SMT自动线2`, `SMT人工线`)。
+        *   **设备 (Device)**: 作业线上的具体设备实例 (如 `工业电脑`, `PDA`, `机械臂`, `打印机`)。
+
+*   **设备基础数据 (Device Master Data)**:
+    *   WES 维护设备清单，记录每个设备的基础信息:
+        *   **标识信息**: `device_id` (唯一标识), `device_name`, `type` (PDA/工业电脑/打印机/电脑/LCR测试仪)。
+        *   **层次归属**: `zone_code`, `work_line_code` (设备所属的区域和作业线)。
+        *   **用途说明**: 设备的功能描述 (如 "用来点货，绑定栈板发运送任务")。
+
+**6. 任务管理 (Task Management)**
+
+*   **任务队列 (Task Queue)**:
+    *   支持基于优先级的任务队列 (白皮书定义 `priority`: 1-10, 10最高)。
+    *   任务按优先级和提交时间排序，高优先级任务优先执行。
+    *   支持任务排队、调度、执行的完整流程。
+
+*   **任务状态 (Task State)**:
+    *   定义任务状态机:
+        *   `PENDING` (待执行): 任务已创建，等待调度。
+        *   `RUNNING` (执行中): 任务已下发给控制系统，等待执行完成。
+        *   `COMPLETED` (已完成): 控制系统回传 `result=SUCCESS`。
+        *   `FAILED` (已失败): 控制系统回传 `result=FAILED` 或超过重试次数。
+        *   `CANCELLED` (已取消): 通过 `Cancel_Command` 接口取消。
+    *   支持任务状态查询和追踪，记录状态变更历史。
+
+*   **超时监控 (Timeout Monitoring)**:
+    *   基于白皮书定义的 `timeout` 参数监控任务执行时间。
+    *   任务下发后启动计时器，超时后触发重试机制 (详见第4章)。
+    *   超过重试次数后，任务状态变更为 `FAILED`，触发报警。
+
+*   **并发控制 (Concurrency Control)**:
+    *   限制单个设备的并发任务数，防止设备过载。
+    *   设备状态为 `RUNNING` 且达到并发上限时，新任务自动进入队列等待。
+    *   设备完成任务后，自动从队列中取出下一个任务执行。
 
 #### 3.3.1 SMT 智能装箱协调 (Smart Kitting Coordination)
 
