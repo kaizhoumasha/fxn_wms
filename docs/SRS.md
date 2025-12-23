@@ -221,6 +221,46 @@ P9 智能仓库使用三种货架类型，各有不同的物理结构和业务�
 
 本模块是 WES 最核心的 **智能调度 (Intelligent Scheduling)** 场景。
 
+#### 3.3.0 WES 核心基础平台 (WES Core Foundation Platform)
+
+为支撑后续章节中复杂的 SMT 智能装箱 (3.3.1)、混合入库 (3.3.2) 及 生产发料 (3.3.3) 业务，WES 必须首先构建一个 **标准化的核心能力平台 (Core Capability Platform)**。根据 *@[docs/third_party_integration_whitepaper.md]* 定义的接入标准，该平台需具备以下四大软件基础设施：
+
+**1. ECS 集成与异构适配 (ECS Integration & Heterogeneous Adaptation)**
+
+*   **架构约束 (Architectural Constraint)**:
+    *   WES **严禁直接连接** 底层 PLC、传感器或电机。所有物理设备的控制均由硬件供应商提供的 **ECS (Equipment Control System)** 负责封装。
+*   **标准协议层 (Standard Protocol Layer)**:
+    *   **推荐协议**: 优先采用 **HTTP/1.1 (RESTful JSON)** 接口标准，实现跨语言、跨平台的轻量级交互。
+    *   **逻辑位置映射**: WES 仅下发 **逻辑位置ID** (如 `STATION_A`, `RACK_01`)，由 ECS 负责将其解析为物理坐标 (X,Y,Z) 或伺服脉冲，实现业务逻辑与物理参数的解耦。
+*   **适配器模式**: 针对不支持标准 HTTP 协议的旧设备，WES 提供适配器层将私有协议转换为内部标准对象模型。
+
+**2. 动态任务编排引擎 (Dynamic Task Orchestration Engine)**
+
+*   **异步指令模式 (Async Command Pattern)**:
+    *   采用 **"下发(Command) -> 应答(Ack) -> 回调(Callback)"** 的三段式交互机制，避免长连接阻塞。
+    *   **WES**: 发送指令 -> 收到 `200 OK` (代表已接收) -> 继续处理其他任务。
+    *   **ECS**: 执行动作 -> 调用 `Report_Result` 回调接口 -> WES 更新任务状态。
+*   **原子指令集 (Atomic Instruction Set)**:
+    *   支持白皮书定义的标准动作类型：`PICK` (抓取), `PUT` (放置), `SCAN` (扫码识别), `PROCESS` (加工/贴标)。
+*   **流量控制**: 基于信号量机制限制向单一 ECS 节点的并发指令数，防止物理拥堵。
+
+**3. 南向指令标准化 (Southbound Command Standardization)**
+
+*   **标准接口定义**:
+    *   **下行接口**: `Receive_Command` (接收任务), `Cancel_Command` (取消任务), `Health_Check` (状态查询)。
+    *   **上行接口**: `Report_Result` (任务结果回传), `Event_Push` (设备事件上报: 急停/离线)。
+*   **幂等性保障 (Idempotency)**:
+    *   所有下发指令携带全局唯一的 `command_id`。
+    *   ECS 必须通过缓存机制处理重复指令，防止因 WES 网络重试导致的物理动作重复执行。
+
+**4. 高可用与自愈框架 (Resiliency & Self-Healing Framework)**
+
+*   **重试与死信 (Retry & DLQ)**:
+    *   **指数退避**: 接口调用超时 (10s) 后，按 `1s, 2s, 4s` 策略自动重试。
+    *   **死信队列**: 超过重试次数 (3次) 的指令移入死信队列 (DLQ)，并触发报警等待人工处理 (3.7.2)。
+*   **状态镜像与心跳**:
+    *   WES 以 **1Hz** 频率轮询 ECS `Health_Check` 接口（或基于心跳包），在 Redis 中维护设备状态镜像 (`IDLE` / `RUNNING` / `ERROR` / `OFFLINE`)，支撑上层业务的实时可用性判断。
+
 #### 3.3.1 SMT 智能装箱协调 (Smart Kitting Coordination)
 
 * **场景**: 从 码头栈板 (Pallet) -> 拆箱 -> 放入 **单层货架 (Single-Layer Rack)** (详见 3.1.2)。

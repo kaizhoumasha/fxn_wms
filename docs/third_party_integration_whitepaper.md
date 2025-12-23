@@ -149,16 +149,38 @@
 *   **WES 响应**: `{"code": 200, "message": "ACK"}`
 
 #### 3.2.2 设备事件上报 (Event Push)
-*   **功能**: 设备发生非任务相关的状态变更（如急停被按下、上线、离线）。
+*   **功能**: 设备发生状态变更（如急停、上线）或 **传感器触发业务信号**（如到位、读码完成）。
 *   **URL**: `http://<WES_IP>:<PORT>/api/v1/callback/event`
 *   **请求示例**:
     ```json
     {
-      "device_id": "ARM_01",
-      "event_type": "ESTOP_PRESSED", // 急停按下
-      "timestamp": 1702627300000
+      "device_id": "CONVEYOR_01",
+      "event_type": "MATERIAL_ARRIVED", // 事件类型: ESTOP_PRESSED, MATERIAL_ARRIVED, SCAN_COMPLETED
+      "timestamp": 1702627300000,
+      "data": {                         // 选填，业务负载数据
+        "location": "STATION_04",
+        "barcode": "PKG12345678"        // 若是主动扫码设备，可在此携带数据
+      }
     }
     ```
+
+---
+
+### 3.3 典型交互场景 (Interaction Scenarios)
+
+#### 3.3.1 传感器触发模式 (Sensor-Triggered Workflow)
+针对 **"传感器检测 -> WES 决策 -> 执行动作"** 的场景（如：托盘到达工位 -> 询问 WES 下一步动作），需遵循 **异步事件驱动** 流程：
+
+1.  **触发 (Trigger)**: ECS 检测到传感器信号。
+2.  **上报 (Report)**: ECS 调用 WES `Event_Push` 接口。
+    *   `event_type`: `MATERIAL_ARRIVED`
+    *   `data`: `{"location": "STATION_A"}`
+3.  **响应 (Ack)**: WES 立即返回 `200 OK` (不含业务指令)。
+4.  **决策 (Decision)**: WES 异步计算业务逻辑（分拣/上架等）。
+5.  **下发 (Dispatch)**: WES 调用 ECS `Receive Command` 接口下发下一步指令。
+    *   `task_type`: `SCAN` 或 `MOVE`
+
+> **禁止事项**: 严禁在 `Event_Push` 的 HTTP 响应 Body 中直接返回具体的动作指令。所有动作必须通过标准的 `Receive Command` 下发，以保证指令的可追踪性和统一管理。
 
 ---
 
