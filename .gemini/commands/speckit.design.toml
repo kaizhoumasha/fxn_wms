@@ -1,0 +1,105 @@
+description = "Generates a detailed design document based on SRS requirements, adhering to project architecture and physical constraints."
+
+prompt = """
+---
+description: Generates a detailed design document based on SRS requirements, adhering to project architecture and physical constraints.
+---
+
+## User Input
+
+```text
+$ARGUMENTS
+```
+
+**Usage**: `/speckit.design <chapter_number> <chapter_name> [options]`
+
+**Options**:
+- `--ultrathink`: Enable deeper analysis (implied by default for this task).
+
+## Outline
+
+1.  **Parse Arguments**: Identify the SRS chapter number (e.g., "3.2.2") and name.
+2.  **Physical Layout Survey (Crucial)**:
+    -   **Check**: Does this feature involve hardware (conveyors, arms, AGVs)?
+    -   **Action**: If yes, use `sequentialthinking` to formulate specific questions about the physical layout (e.g., "Is there a buffer zone?", "How many sensors?").
+    -   **Interaction**: Ask the user these questions *before* generating the document. If the user provided this info in the prompt or context, proceed.
+3.  **Context Loading**:
+    -   `read_file` `@docs/SRS.md` (target chapter).
+    -   `read_file` `@docs/user_requirement.md` (related requirements).
+    -   `read_file` `@docs/design/3.3.0-wes-core-foundation-platform.md` (Architecture Baseline).
+    -   `read_file` `@docs/third_party_integration_whitepaper.md` (Integration Standards).
+    -   `read_file` `@docs/mock_data.md` (Data structures).
+4.  **Architectural Analysis**:
+    -   **Tool**: Use `sequentialthinking` to analyze the flow.
+    -   **Constraint Check**: Verify WMS vs. WES boundaries (see "Design Constitution" below).
+    -   **Hardware Logic**: Define what is ECS autonomous loop vs. WES coordination.
+5.  **Document Generation (Phased Writing)**:
+    -   **Target File**: `docs/design/<chapter>-<slug-name>.md`
+    -   **Language**: **Simplified Chinese (简体中文)**.
+    -   **Phase 1**: Write **Header, Tech Stack, Scope, & Physical Layout**. (Use `write_file`).
+    -   **Phase 2**: Append **Sub-function Flows**. (Read -> Append -> Write).
+    -   **Phase 3**: Append **Sequence Diagrams & Industrial Ops**. (Read -> Append -> Write).
+    -   **Phase 4**: Append **UI/Page Design**. (Read -> Append -> Write).
+    -   **Phase 5**: Append **Special Mechanisms, Summary, & Team Responsibilities**. (Read -> Append -> Write).
+6.  **Final Review**:
+    -   Remind user to run `/audit-design <file_path>` upon completion.
+
+## Design Constitution (Critical Rules)
+
+### 1. Architecture Boundaries
+-   **WMS Responsibilities**: Inventory Master Data, Business Documents (Orders), Financials, Report queries.
+-   **WES Responsibilities**: Execution Coordination, Transient Task State, Hardware Scheduling, Strategy Engine.
+-   **Hardware (ECS)**: Handles local control loops (Sensor -> Action). *Do not micromanage ECS from WES.*
+-   **No WES-ECS Micromanagement**: WES sends "Business Goals" (e.g., "Scan this box"), ECS reports "Results". WES does *not* control motors or read raw sensors directly.
+
+### 2. Interaction Standards (Whitepaper Compliance)
+-   **Reference**: Strictly follow `@docs/third_party_integration_whitepaper.md`.
+-   **Async Pattern**: Command (WES->ECS) -> Ack (Immediate 200 OK) -> Callback (ECS->WES Result). **Never** block waiting for physical action.
+-   **Sensor Trigger Workflow**:
+    1.  ECS detects sensor -> Sends `Event_Push` to WES.
+    2.  WES responds `200 OK` immediately with **EMPTY BODY**. (Forbids returning instructions in Event response).
+    3.  WES Asynchronously calculates logic -> Sends new `Receive_Command`.
+-   **Coordinate System**: WES issues **Logical IDs** (e.g., `STATION_A`, `SLOT_1`). ECS maps these to Physical Coordinates (X,Y,Z). WES never sends servo parameters.
+-   **Idempotency**: All Commands must include a global `command_id`. ECS must handle deduplication.
+
+### 3. Operational Patterns
+-   **Pull over Push**: For human tasks (IQC, Packing), prefer "Pull" (Human calls task) over "Push" (System assigns task) to avoid congestion.
+-   **Entity Distinction**: Distinguish **Business Entities** (GRN, Order) from **Physical Entities** (Pallet, Bin). Operations usually target Physical Entities.
+
+### 4. Data Integrity
+-   **Data Ownership**: Never duplicate data. WES queries WMS for inventory; WES queries QMS for quality rules.
+-   **Transactional Safety**: Batch operations (e.g., splitting a pallet) must be atomic.
+
+## Output Template Structure
+
+```markdown
+# X.X.X <功能名称> - 详细设计
+
+## 3.0 物理布局与硬件配置 (Physical Layout)
+*如果是硬件相关功能，必须包含此章节*
+- 布局图/示意描述
+- 传感器位置与触发逻辑
+- ECS 自主控制边界
+
+## 1. 技术栈说明 (Technology Stack)
+...
+
+## 2. 子功能流程设计 (Sub-function Flows)
+...
+
+## 3. 典型时序 (Mermaid Sequence)
+...
+
+## 4. 功能页面设计 (Functional Page Design)
+...
+
+## 5. 团队分工 (Team Responsibilities)
+| 功能模块 | WMS | WES | ECS | 协同 |
+|---|---|---|---|---|
+...
+```
+
+## Tool Usage
+- **sequentialthinking**: MUST use for Step 2 (Physical Survey) and Step 4 (Analysis).
+- **serena**: Use `search_for_pattern` if you need to find existing code patterns referenced in the design.
+"""

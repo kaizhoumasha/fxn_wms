@@ -1,0 +1,91 @@
+description = "Audits a design document against SRS requirements, user needs, and architectural whitepaper standards."
+
+prompt = """
+---
+description: Audits a design document against SRS requirements, user needs, and architectural whitepaper standards.
+---
+
+## User Input
+
+```text
+$ARGUMENTS
+```
+
+**Usage**: `/speckit.audit-design <design_doc_path>`
+
+**Options**:
+- `--ultrathink`: Enable deeper analysis (implied).
+
+## Outline
+
+1.  **Parse Arguments**: Identify the target design document path.
+2.  **Context Loading**:
+    -   `read_file` the target design document.
+    -   `read_file` `@docs/SRS.md` (relevant chapter).
+    -   `read_file` `@docs/user_requirement.md`.
+    -   `read_file` `@docs/third_party_integration_whitepaper.md` (Crucial for compliance check).
+    -   `read_file` `@docs/mock_data.md`.
+3.  **Audit Execution**:
+    -   Use `sequentialthinking` to perform a multi-pass audit.
+    -   **Pass 1: Requirement Coverage**: Compare against `user_requirement.md`.
+    -   **Pass 2: Internal Consistency**: Check Actor vs Flow, Sequence vs Flow, Data vs Flow.
+    -   **Pass 3: Whitepaper Compliance**: Check against integration standards (Async, Sensor Trigger, Logical Coords).
+4.  **Report Generation**:
+    -   Generate a structured markdown report (in **Simplified Chinese**).
+    -   Include specific sections for Coverage, Consistency, and Compliance.
+5.  **Document Update**:
+    -   Append the audit report to the end of the design document using `read_file` then `write_file` (append mode logic).
+
+## Audit Criteria Details
+
+### 1. Requirement Coverage (User Requirements)
+-   List all steps from `user_requirement.md`.
+-   Mark as ✅ Covered / ❌ Not Covered.
+-   Calculate coverage percentage.
+
+### 2. Whitepaper Compliance (Critical)
+**Strictly check the following architectural constraints:**
+
+| Check Item | Standard (from Whitepaper) | Pass Criteria |
+| :--- | :--- | :--- |
+| **Sensor Trigger** | `Event_Push` -> `200 OK (Empty)` -> `Receive_Command` | ❌ Fail if instructions are returned in Event response body. |
+| **Async Pattern** | Command -> Ack (Immediate) -> Callback | ❌ Fail if WES waits synchronously for physical action. |
+| **Coordinates** | Logical IDs (e.g., STATION_A) | ❌ Fail if WES sends physical servo/motor parameters. |
+| **Idempotency** | Global `command_id` required | ✅ Must reference `command_id` in API design. |
+| **RCS Scope** | WES does **not** direct connect to RCS (yet) | ✅ WES requests WMS to schedule RCS. |
+
+### 3. Internal Consistency
+-   **Actors**: Does the "Actors & Ownership" section match the "Sub-function Flows"?
+-   **Sequence**: Do the Mermaid diagrams match the text description?
+-   **Data**: Do the database schemas support the described flows?
+
+## Output Report Template
+
+```markdown
+# 审计报告 (Audit Report)
+
+## 1. 需求覆盖审计 (Requirement Coverage)
+... (Table comparing user_requirement vs Design) ...
+
+## 2. 白皮书合规性审计 (Whitepaper Compliance)
+| 检查项 | 标准要求 | 设计现状 | 结论 |
+|---|---|---|---|
+| **传感器触发模式** | Event响应必须为空，指令异步下发 | ... | ✅/❌ |
+| **异步交互模式** | Command-Ack-Callback 三段式 | ... | ✅/❌ |
+| **坐标系统** | WES下发逻辑坐标，ECS解析物理坐标 | ... | ✅/❌ |
+| **WES/ECS边界** | WES不微管硬件，只发业务指令 | ... | ✅/❌ |
+
+## 3. 内部一致性审计
+- **角色一致性**: ...
+- **时序一致性**: ...
+
+## 4. 总体结论 & 建议
+- 🔴 严重问题: ...
+- 🟡 一般问题: ...
+- 🟢 改进建议: ...
+```
+
+## Tool Usage
+- **sequentialthinking**: Essential for cross-referencing multiple documents and logic paths.
+- **serena**: Use if deep code pattern search is needed, though `read_file` is usually sufficient for docs.
+"""
