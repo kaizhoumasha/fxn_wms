@@ -156,7 +156,10 @@ tags: [design, srs, documentation, architecture]
 - 读取 `@docs/SRS.md` 中用户指定的章节
 - 读取 `@docs/user_requirement.md` 中的相关需求
 - 读取 `@docs/mock_data.md` 作为模拟数据参考
-- 参考本文档中的"标准文档结构模板"章节（§4）
+- **参考 `@.claude/skills/design.md` 中的完整指南**:
+  - §4 标准文档结构模板（完整模板）
+  - §3 架构边界原则（详细原则）
+  - 关键经验教训章节（设计模式和反模式）
 
 ### 2. 生成设计文档（分阶段写入）
 
@@ -167,7 +170,7 @@ tags: [design, srs, documentation, architecture]
 **包含内容**:
 - 文档标题
 - 技术栈说明 (Technology Stack)
-  - WMS 技术架构（ASP.NET MVC 前后端不分离）
+  - WMS 技术架构（ASP.NET MVC WebForm 前后端不分离）
   - WES 技术架构（Python/FastAPI）
   - 集成架构图（Mermaid 格式）
   - ASP.NET MVC 代码示例（如有 WMS-WES 交互）
@@ -454,3 +457,22 @@ tags: [design, srs, documentation, architecture]
 **验证阶段**:
 - [ ] 验证文档完整性（读取文件检查）
 - [ ] 使用 /audit-design 命令进行审计
+
+---
+
+## 参考资源
+
+### 完整设计指南
+
+详细的设计原则、模板和经验教训，请参考 **`@.claude/skills/design.md`**
+
+该文件包含：
+- **§4 标准文档结构模板**：完整的 Markdown 模板（1000+ 行），包含所有章节的详细格式和示例
+- **§3 架构边界原则**：7 条关键设计原则和约束
+- **关键经验教训**：11 个类别的设计模式和反模式，基于实际项目经验总结
+
+**使用建议**：
+- 在开始设计前，先阅读 skills 文件中的"关键经验教训"章节
+- 在生成文档时，参考 skills 文件中的"标准文档结构模板"（§4）
+- 在遇到架构决策时，查阅 skills 文件中的"架构边界原则"（§3）
+- 遇到设计困惑时，查找 skills 文件中相关的"教训"章节
