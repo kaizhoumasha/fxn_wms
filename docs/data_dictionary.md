@@ -1,7 +1,7 @@
 # fxn-wms 全域数据字典 (Data Dictionary)
 
-> **版本**: v1.0
-> **日期**: 2025-12-31
+> **版本**: v1.1
+> **日期**: 2026-01-04
 > **说明**: 本文档汇总了 WMS (SQL Server) 和 WES (PostgreSQL) 的完整数据库模型，涵盖业务主数据、执行数据、审计日志及系统降级支持模型。
 
 ---
@@ -94,6 +94,16 @@ WMS 是系统的**业务决策、账务核心与人工兜底中心**。它管理
 | **grn_number** | VARCHAR(50) | SAP GRN 单号 |
 | **manifest_status** | VARCHAR(20) | 清单状态 |
 
+### `arrival_manifest_detail` (到货清单明细表)
+| 字段名 | 类型 | 描述 |
+| :--- | :--- | :--- |
+| **detail_id** | VARCHAR(50) [PK] | 明细行 ID |
+| **manifest_id** | VARCHAR(50) [FK] | 关联清单 |
+| **po_number** | VARCHAR(50) | 采购单号 |
+| **material_id** | VARCHAR(50) | 物料编码 |
+| **qty** | DECIMAL(18,4) | 数量 |
+| **line_status** | VARCHAR(20) | `PENDING`, `VALIDATED`, `MISMATCH` |
+
 ### `binding_detail` (绑定明细表)
 | 字段名 | 类型 | 描述 |
 | :--- | :--- | :--- |
@@ -119,6 +129,23 @@ WMS 是系统的**业务决策、账务核心与人工兜底中心**。它管理
 | **pallet_id** | VARCHAR(50) [FK] | 栈板 ID |
 | **six_in_one_barcode** | VARCHAR(100) | PKG 六合一码 (用于追溯) |
 | **grn_number** | VARCHAR(50) | 关联 GRN |
+
+### `print_task` (打印任务表)
+| 字段名 | 类型 | 描述 |
+| :--- | :--- | :--- |
+| **print_task_id** | VARCHAR(50) [PK] | 任务 ID |
+| **pallet_id** | VARCHAR(50) | 栈板号 |
+| **status** | VARCHAR(20) | `PENDING`, `PRINTING`, `SUCCESS`, `FAIL` |
+| **printer_id** | VARCHAR(50) | 目标打印机 |
+
+### `validation_log` (校验日志表)
+| 字段名 | 类型 | 描述 |
+| :--- | :--- | :--- |
+| **log_id** | VARCHAR(50) [PK] | 日志 ID |
+| **arrival_id** | VARCHAR(50) | 关联到货 |
+| **manifest_id** | VARCHAR(50) | 关联清单 |
+| **validation_result** | VARCHAR(20) | `PASS`, `FAIL` |
+| **mismatch_details** | NVARCHAR(MAX) | 差异详情 (JSON) |
 
 ---
 
@@ -170,6 +197,40 @@ WMS 是系统的**业务决策、账务核心与人工兜底中心**。它管理
 | **pkg_code** | VARCHAR(100) | 取样的 PKG |
 | **status** | VARCHAR(20) | `SAMPLED` (已取走), `RETURNED` (已归还) |
 
+### `priority_adjustment_log` (优先级调整日志)
+| 字段名 | 类型 | 描述 |
+| :--- | :--- | :--- |
+| **log_id** | VARCHAR(50) [PK] | 日志 ID |
+| **task_id** | VARCHAR(50) | 关联任务 |
+| **old_priority** | INT | 原优先级 |
+| **new_priority** | INT | 新优先级 |
+| **reason** | NVARCHAR(500) | 调整原因 |
+
+### `split_record` (拆板记录表)
+| 字段名 | 类型 | 描述 |
+| :--- | :--- | :--- |
+| **split_id** | VARCHAR(50) [PK] | 记录 ID |
+| **original_pallet_id** | VARCHAR(50) | 原栈板 |
+| **new_pallet_id** | VARCHAR(50) | 新栈板 (NG) |
+| **split_qty** | DECIMAL(18,4) | 拆出数量 |
+
+### `iqc_exception_log` (IQC 异常日志)
+| 字段名 | 类型 | 描述 |
+| :--- | :--- | :--- |
+| **exception_id** | VARCHAR(50) [PK] | 异常 ID |
+| **exception_type** | VARCHAR(50) | `SAMPLING_ERROR`, `QMS_TIMEOUT` |
+| **severity** | VARCHAR(20) | `HIGH`, `MEDIUM`, `LOW` |
+| **resolution_status** | VARCHAR(20) | `PENDING`, `RESOLVED` |
+
+### `qms_api_log` (QMS 交互日志)
+| 字段名 | 类型 | 描述 |
+| :--- | :--- | :--- |
+| **log_id** | VARCHAR(50) [PK] | 日志 ID |
+| **api_type** | VARCHAR(50) | `SAMPLING`, `RESULT`, `REVIEW` |
+| **request_payload** | NVARCHAR(MAX) | 请求体 (JSON) |
+| **response_payload** | NVARCHAR(MAX) | 响应体 (JSON) |
+| **response_time_ms** | INT | 耗时 (ms) |
+
 ---
 
 ## 1.6 生产发料 (Production Issue - 3.3.3)
@@ -210,7 +271,7 @@ WMS 是系统的**业务决策、账务核心与人工兜底中心**。它管理
 | **log_id** | VARCHAR(50) [PK] | 日志 ID |
 | **api_type** | VARCHAR(50) | `SAP`, `RCS`, `QMS`, `WES` |
 | **request_url** | VARCHAR(500) | 请求地址 |
-| **request_payload** | JSON | 请求体 |
+| **request_payload** | NVARCHAR(MAX) | 请求体 |
 | **response_status** | INT | HTTP 状态码 |
 | **related_entity_id** | VARCHAR(50) | 关联业务 ID (如 PalletID) |
 
@@ -223,6 +284,15 @@ WMS 是系统的**业务决策、账务核心与人工兜底中心**。它管理
 | **new_status** | VARCHAR(50) | 新状态 |
 | **changed_by** | VARCHAR(50) | 操作人/系统 |
 
+### `pallet_movement_history` (栈板位置移动历史)
+| 字段名 | 类型 | 描述 |
+| :--- | :--- | :--- |
+| **movement_id** | VARCHAR(50) [PK] | 移动 ID |
+| **pallet_id** | VARCHAR(50) | 栈板号 |
+| **from_location** | VARCHAR(50) | 起始位置 |
+| **to_location** | VARCHAR(50) | 目标位置 |
+| **transport_task_id** | VARCHAR(50) | 关联搬运任务 |
+
 ### `WMS_Manual_Work_Task` (人工兜底任务)
 | 字段名 | 类型 | 描述 |
 | :--- | :--- | :--- |
@@ -232,6 +302,30 @@ WMS 是系统的**业务决策、账务核心与人工兜底中心**。它管理
 | **target_cell** | INT | 目标格口 (PDA 指引核心) |
 | **guide_message** | NVARCHAR(200) | 操作指引 (如"请注意A面") |
 | **status** | VARCHAR(20) | `PENDING`, `COMPLETED` |
+
+### `inventory_sync_log` (SAP 同步日志)
+| 字段名 | 类型 | 描述 |
+| :--- | :--- | :--- |
+| **record_id** | VARCHAR(50) [PK] | 记录 ID |
+| **pallet_id** | VARCHAR(50) | 栈板 ID |
+| **sync_status** | VARCHAR(20) | `PENDING`, `SYNCED`, `FAILED` |
+| **sync_error** | NVARCHAR(MAX) | 错误信息 |
+
+### `rcs_callback_log` (RCS 回调日志)
+| 字段名 | 类型 | 描述 |
+| :--- | :--- | :--- |
+| **log_id** | VARCHAR(50) [PK] | 日志 ID |
+| **task_id** | VARCHAR(50) | 任务 ID |
+| **callback_status** | VARCHAR(20) | `ARRIVED`, `FAILED` |
+| **is_duplicate** | BIT | 是否重复 |
+
+### `special_material_log` (特殊物料日志)
+| 字段名 | 类型 | 描述 |
+| :--- | :--- | :--- |
+| **log_id** | BIGINT [PK] | 日志 ID |
+| **material_code** | VARCHAR(50) | 物料编码 |
+| **operation_type** | VARCHAR(50) | 操作类型 |
+| **status_change** | VARCHAR(100) | 状态变更 |
 
 ---
 
@@ -261,6 +355,22 @@ WES 是**执行控制、算法策略与设备协调中心**。它管理微观的
 | **status** | VARCHAR(20) | `PENDING`, `RUNNING`, `COMPLETED`, `FAILED` |
 | **params** | JSONB | 任务参数 |
 
+### `device_events` (设备事件原始日志)
+| 字段名 | 类型 | 描述 |
+| :--- | :--- | :--- |
+| **event_id** | VARCHAR(50) [PK] | 事件 ID |
+| **device_id** | VARCHAR(50) | 设备 ID |
+| **event_type** | VARCHAR(50) | 事件类型 |
+| **event_data** | JSONB | 事件数据 |
+
+### `task_status_history` (任务状态变更历史)
+| 字段名 | 类型 | 描述 |
+| :--- | :--- | :--- |
+| **history_id** | VARCHAR(50) [PK] | 历史 ID |
+| **task_id** | VARCHAR(50) | 任务 ID |
+| **old_status** | VARCHAR(20) | 原状态 |
+| **new_status** | VARCHAR(20) | 新状态 |
+
 ### `wes_commands` (原子指令表 - 3.3.3)
 | 字段名 | 类型 | 描述 |
 | :--- | :--- | :--- |
@@ -269,6 +379,13 @@ WES 是**执行控制、算法策略与设备协调中心**。它管理微观的
 | **command_type** | VARCHAR(20) | `PICK`, `TRANSFER` |
 | **working_height** | DECIMAL(10,2) | 机械臂工作高度 (mm) |
 | **status** | VARCHAR(20) | `SENT`, `COMPLETED`, `FAILED` |
+
+### `smt_conveyor_config` (流水线配置)
+| 字段名 | 类型 | 描述 |
+| :--- | :--- | :--- |
+| **id** | SERIAL [PK] | 自增 ID |
+| **conveyor_id** | VARCHAR(50) | 流水线 ID |
+| **operation_mode** | VARCHAR(20) | `INBOUND`, `OUTBOUND` |
 
 ---
 
@@ -293,6 +410,21 @@ WES 是**执行控制、算法策略与设备协调中心**。它管理微观的
 | **rack_id** | VARCHAR(50) | 当前停放的货架 (可空) |
 | **is_occupied** | BOOLEAN | 是否占用 |
 
+### `rack_resource` (货架资源状态 - WES View)
+| 字段名 | 类型 | 描述 |
+| :--- | :--- | :--- |
+| **rack_id** | VARCHAR(50) [PK] | 货架 ID |
+| **current_area** | VARCHAR(50) | `STORAGE`, `KITTING`, `BUFFER` |
+| **usage_status** | VARCHAR(20) | `EMPTY`, `PARTIAL`, `FULL` |
+
+### `rack_allocation_lock` (货架分配锁)
+| 字段名 | 类型 | 描述 |
+| :--- | :--- | :--- |
+| **lock_id** | VARCHAR(50) [PK] | 锁 ID |
+| **rack_id** | VARCHAR(50) | 货架 ID |
+| **locked_by** | VARCHAR(50) | 锁定者 |
+| **expire_at** | TIMESTAMP | 过期时间 |
+
 ---
 
 ## 2.3 SMT 业务追踪 (SMT Business Tracking - 3.3.1 ~ 3.3.3)
@@ -306,6 +438,21 @@ WES 是**执行控制、算法策略与设备协调中心**。它管理微观的
 | **assigned_line** | VARCHAR(20) | 分配线体 (`LINE_1`, `LINE_2`) |
 | **status** | VARCHAR(20) | `DISPATCHED`, `PROCESSING`, `COMPLETED` |
 
+### `kitting_exception_log` (装箱异常日志)
+| 字段名 | 类型 | 描述 |
+| :--- | :--- | :--- |
+| **log_id** | VARCHAR(50) [PK] | 日志 ID |
+| **error_type** | VARCHAR(50) | `SCAN_FAIL`, `PUT_FAIL` |
+| **severity** | VARCHAR(20) | `CRITICAL`, `WARNING` |
+
+### `kitting_task_status_history` (装箱任务历史)
+| 字段名 | 类型 | 描述 |
+| :--- | :--- | :--- |
+| **history_id** | VARCHAR(50) [PK] | 历史 ID |
+| **task_id** | VARCHAR(50) [FK] | 任务 ID |
+| **old_status** | VARCHAR(50) | 原状态 |
+| **new_status** | VARCHAR(50) | 新状态 |
+
 ### `hybrid_inbound_tasks` (混合入库任务)
 | 字段名 | 类型 | 描述 |
 | :--- | :--- | :--- |
@@ -313,6 +460,14 @@ WES 是**执行控制、算法策略与设备协调中心**。它管理微观的
 | **task_type** | VARCHAR(20) | `FULL_EXCHANGE` (满箱交换), `PIPELINE_PICKING` (拣选) |
 | **source_bin_id** | VARCHAR(50) | 源料箱 |
 | **target_bin_id** | VARCHAR(50) | 目标料箱 (交换模式用) |
+| **status** | VARCHAR(20) | `PENDING`, `COMPLETED` |
+
+### `tray_transfers` (料盘转移记录 - 3.3.2)
+| 字段名 | 类型 | 描述 |
+| :--- | :--- | :--- |
+| **transfer_id** | UUID [PK] | 转移 ID |
+| **task_id** | UUID [FK] | 关联任务 |
+| **transfer_type** | VARCHAR(20) | `FULL_EXCHANGE`, `PIPELINE_PICK` |
 | **status** | VARCHAR(20) | `PENDING`, `COMPLETED` |
 
 ### `smt_bin_tracking` (流水线料盒追踪)
@@ -324,6 +479,23 @@ WES 是**执行控制、算法策略与设备协调中心**。它管理微观的
 | **recognition_stage**| VARCHAR(30) | `ENTRY`, `PLATFORM`, `WORK_POS` (识别阶段) |
 | **orientation** | VARCHAR(20) | `NORMAL`, `REVERSE` (料盒朝向) |
 | **status** | VARCHAR(20) | `ON_CONVEYOR`, `COMPLETED` |
+
+### `wes_task_materials` (发料任务物料 - 3.3.3)
+| 字段名 | 类型 | 描述 |
+| :--- | :--- | :--- |
+| **id** | SERIAL [PK] | 自增 ID |
+| **task_id** | VARCHAR(50) [FK] | 关联任务 |
+| **material_id** | VARCHAR(50) | 物料编码 |
+| **required_qty** | INT | 需求数量 |
+| **completed_qty** | INT | 完成数量 |
+
+### `wes_task_trays` (发料任务料盘 - 3.3.3)
+| 字段名 | 类型 | 描述 |
+| :--- | :--- | :--- |
+| **id** | SERIAL [PK] | 自增 ID |
+| **task_material_id** | INT [FK] | 关联物料任务 |
+| **pkg_code** | VARCHAR(100) | PKG 码 |
+| **status** | VARCHAR(20) | `PENDING`, `PICKED` |
 
 ---
 
@@ -362,3 +534,52 @@ WES 是**执行控制、算法策略与设备协调中心**。它管理微观的
 | **bin_code** | VARCHAR(50) | 料盒码 |
 | **error_type** | VARCHAR(30) | `SCAN_FAIL`, `PKG_MISMATCH`, `ORIENTATION_ERROR` |
 | **processing_status** | VARCHAR(30) | `RETURNING`, `RETURNED` |
+
+---
+
+## 2.5 策略与编排 (Strategy & Orchestration - 3.4)
+
+### `wes_task_dependencies` (任务依赖表)
+| 字段名 | 类型 | 描述 |
+| :--- | :--- | :--- |
+| **id** | SERIAL [PK] | ID |
+| **task_id** | VARCHAR(50) | 任务 ID |
+| **depends_on** | VARCHAR(50) | 依赖任务 ID |
+
+### `wes_task_allocations` (任务资源分配)
+| 字段名 | 类型 | 描述 |
+| :--- | :--- | :--- |
+| **allocation_id** | VARCHAR(50) [PK] | 分配 ID |
+| **task_id** | VARCHAR(50) | 任务 ID |
+| **resource_id** | VARCHAR(50) | 资源 ID (设备/货位) |
+
+### `wes_execution_logs` (执行日志)
+| 字段名 | 类型 | 描述 |
+| :--- | :--- | :--- |
+| **log_id** | BIGINT [PK] | 日志 ID |
+| **task_id** | VARCHAR(50) | 任务 ID |
+| **event_type** | VARCHAR(50) | 事件类型 |
+| **event_data** | JSONB | 事件数据 |
+
+### `wes_coordination_state` (协调状态)
+| 字段名 | 类型 | 描述 |
+| :--- | :--- | :--- |
+| **state_id** | VARCHAR(50) [PK] | 状态 ID |
+| **task_id** | VARCHAR(50) | 关联任务 |
+| **state_name** | VARCHAR(50) | 状态名称 |
+| **state_data** | JSONB | 状态数据 |
+
+### `strategy_config` (策略配置)
+| 字段名 | 类型 | 描述 |
+| :--- | :--- | :--- |
+| **config_key** | VARCHAR(50) [PK] | 配置键 |
+| **config_value** | VARCHAR(200) | 配置值 |
+| **strategy_type** | VARCHAR(50) | 策略类型 |
+
+### `optimization_log` (优化记录)
+| 字段名 | 类型 | 描述 |
+| :--- | :--- | :--- |
+| **log_id** | BIGINT [PK] | 日志 ID |
+| **strategy** | VARCHAR(50) | 策略名称 |
+| **action** | VARCHAR(50) | 执行动作 |
+| **details** | JSONB | 详细信息 |
